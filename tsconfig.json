@@ -1,0 +1,11 @@
+{
+	"compilerOptions": {
+		"module": "commonJS",
+		"target": "ESNext",
+		"strict": true,
+		"esModuleInterop": true,
+		"noUncheckedIndexedAccess": true,
+		"jsx": "react-jsx",
+		"jsxImportSource": "preact"
+	}
+}
