@@ -7,5 +7,6 @@ The ChatGPT UI reimplemented as a desktop app, with some additional features.
 https://github.com/chatgptui/desktop/releases
 
 # Related Projects
-- https://github.com/lencx/ChatGPT
+- https://github.com/Loeffeldude/my-chat-gpt
 - https://www.typingmind.com/
+- https://github.com/lencx/ChatGPT
