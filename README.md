@@ -1,5 +1,3 @@
-competitor https://github.com/lencx/ChatGPT
-
-# Benefits
-- no recaptcha
-- better privacy policy
+# Related Projects
+- https://github.com/lencx/ChatGPT
+- https://www.typingmind.com/
