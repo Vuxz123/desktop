@@ -82,7 +82,7 @@ const Message = (props: { depth: number }) => {
                 await invoke("sound_waiting_text_completion")
                 setTimeout(() => { loop() }, 800);
             }
-            loop()
+            if (useConfigStore.getState().audioFeedback) { loop() }
             return () => { playing = false }
         }
     }, [waiting])
@@ -197,6 +197,7 @@ const defaultConfigValues = {
     azureTTSLang: "en-US",
     budget: 1,
     maxCostPerMessage: 0.015,
+    audioFeedback: 1,
 } satisfies Record<string, string | number>
 
 const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -540,13 +541,13 @@ const App = (props: {}) => {
     const focusInput = () => {
         textareaRef.current!.focus()
         textareaRef.current!.select()
-        invoke("sound_focus_input")
+        if (useConfigStore.getState().audioFeedback) { invoke("sound_focus_input") }
     }
 
     const openThread = (id: MessageId) => {
         reload([id])
         focusInput()
-        speak(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", 0)
+        if (useConfigStore.getState().audioFeedback) { speak(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", 0) }
         document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({ behavior: "smooth" })
     }
 
@@ -567,6 +568,8 @@ const App = (props: {}) => {
                 return
             }
         }
+        const speakIfAudioFeedbackIsEnabled = (content: string) => { if (useConfigStore.getState().audioFeedback) { speak(content, 0) } }
+
         if (ctrlOrCmd(ev) && ev.code === "KeyH") {
             // Help
             ev.preventDefault()
@@ -592,7 +595,7 @@ const App = (props: {}) => {
         } else if (ctrlOrCmd(ev) && ev.code === "KeyU") {
             // Speak texts in the input box
             ev.preventDefault()
-            speak(textareaRef.current!.value, 0)
+            speakIfAudioFeedbackIsEnabled(textareaRef.current!.value)
         } else if (ctrlOrCmd(ev) && ev.code === "KeyL") {
             // Focus hte input box
             ev.preventDefault()
@@ -607,9 +610,9 @@ const App = (props: {}) => {
             ev.preventDefault()
             const visibleMessages = useStore.getState().visibleMessages
             if (visibleMessages.length === 0) {
-                speak("No messages in the thread.", 0)
+                speakIfAudioFeedbackIsEnabled("No messages in the thread.")
             } else {
-                speak(visibleMessages.at(-1)!.content, 0)
+                speakIfAudioFeedbackIsEnabled(visibleMessages.at(-1)!.content)
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyR") {
             // Regenerate response
@@ -620,15 +623,15 @@ const App = (props: {}) => {
             ev.preventDefault()
             const s = useStore.getState()
             if (s.visibleMessages.length === 0) {
-                speak("There are no newer threads.", 0)
+                speakIfAudioFeedbackIsEnabled("There are no newer threads.")
             } else {
                 const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
                 if (i === -1) {
-                    speak("Something went wrong.", 0)
+                    speakIfAudioFeedbackIsEnabled("Something went wrong.")
                 } else if (i <= 0) {
                     reload([])
                     focusInput()
-                    speak("new thread", 0)
+                    speakIfAudioFeedbackIsEnabled("new thread")
                 } else {
                     openThread(s.threads[i - 1]!.id)
                 }
@@ -638,15 +641,15 @@ const App = (props: {}) => {
             ev.preventDefault()
             const s = useStore.getState()
             if (s.threads.length === 0) {
-                speak("There are no threads.", 0)
+                speakIfAudioFeedbackIsEnabled("There are no threads.")
             } else if (s.visibleMessages.length === 0) {
                 openThread(s.threads[0]!.id)
             } else {
                 const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
                 if (i === -1) {
-                    speak("Something went wrong.", 0)
+                    speakIfAudioFeedbackIsEnabled("Something went wrong.")
                 } else if (i >= s.threads.length - 1) {
-                    speak("There are no older threads.", 0)
+                    speakIfAudioFeedbackIsEnabled("There are no older threads.")
                 } else {
                     openThread(s.threads[i + 1]!.id)
                 }
@@ -800,7 +803,7 @@ Browsing: disabled`, status: 0
                         <path d="M17.7 5a9 9 0 0 1 0 14"></path>
                         <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"></path>
                     </svg>
-                    Text-to-speech
+                    Text-to-speech / Audio feedback
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
@@ -963,7 +966,7 @@ const TextToSpeechDialog = () => {
     const ttsBackend = useConfigStore((s) => s.ttsBackend)
     const [voiceList, setVoiceList] = useState<AzureVoiceInfo[]>([])
     const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-
+    const audioFeedback = useConfigStore((s) => s.audioFeedback)
     const getVoiceList = async () => {
         if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey) { return }
         const res = await fetch<AzureVoiceInfo[]>(`https://${azureTTSRegion}.tts.speech.microsoft.com/cognitiveservices/voices/list`, { method: "GET", headers: { "Ocp-Apim-Subscription-Key": azureTTSResourceKey } })
@@ -973,12 +976,11 @@ const TextToSpeechDialog = () => {
 
     return <dialog id="text-to-speech" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
-            <h3>Test Audio Output</h3>
+            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Output Device</h2>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { speak("Microsoft Speech Service Text-to-Speech API", 1) }}>Test text-to-speech</button>
-            <h3>Text-to-speech Backend</h3>
-            <select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as "system" | "azure" }) }}>
+            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
+            <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as "system" | "azure" }) }}>
                 <option value="system">System</option>
                 <option value="azure">Microsoft Azure Text-to-speech API</option>
             </select>
@@ -1025,6 +1027,11 @@ const TextToSpeechDialog = () => {
                     </tbody>
                 </table>
             </>}
+            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Audio Feedback</h2>
+            <select class="px-2 text-zinc-600" value={audioFeedback ? "on" : "off"} onChange={(ev) => { useConfigStore.setState({ audioFeedback: ev.currentTarget.value === "on" ? 1 : 0 }) }}>
+                <option value="on">enabled</option>
+                <option value="off">disabled</option>
+            </select>
         </div>
     </dialog>
 }
