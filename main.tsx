@@ -190,7 +190,7 @@ type MessageId = number
 
 const defaultConfigValues = {
     APIKey: "",
-    ttsBackend: (window.speechSynthesis ? "web-speech-api" : "off") as "off" | "system" | "pico2wave" | "web-speech-api" | "azure",
+    ttsBackend: (window.speechSynthesis ? "web-speech-api" : "off") as "off" | "pico2wave" | "web-speech-api" | "azure",
     azureTTSRegion: "",
     azureTTSResourceKey: "",
     azureTTSVoice: "en-US-ChristopherNeural",
@@ -1050,9 +1050,8 @@ const TextToSpeechDialog = () => {
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { speak(null, 1) }}>Test text-to-speech</button>
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
-            <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as "system" | "azure" }) }}>
+            <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as any }) }}>
                 <option value="off">Disabled</option>
-                <option value="system">System</option>
                 <option value="pico2wave">pico2wave</option>
                 <option value="web-speech-api" disabled={!window.speechSynthesis}>Web Speech API {window.speechSynthesis ? "" : "(undetected)"}</option>
                 <option value="azure">Microsoft Azure Text-to-speech API</option>
@@ -1300,8 +1299,6 @@ const speak = async (content: string | null, beepVolume: number) => {
             break
         } case "pico2wave": {
             await invoke("speak_pico2wave", { content: content ?? "pico2wave", lang: pico2waveVoice })
-            break
-        } case "system": {
             break
         } case "azure": {
             if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey || !azureTTSVoice) { return }
