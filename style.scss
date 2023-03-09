@@ -5,6 +5,28 @@
 @tailwind utilities;
 
 .markdown {
+    h1 { @apply font-semibold text-4xl my-3; }
+    h2 { @apply font-semibold text-3xl my-3; }
+    h3 { @apply font-semibold text-2xl my-3; }
+    h4 { @apply font-semibold text-xl my-2; }
+    h5 { @apply font-semibold text-lg my-1; }
+    h6 { @apply font-semibold; }
+    a { @apply font-bold underline; }
+    table {
+        @apply w-full;
+        th {
+            @apply rounded-lg text-left;
+        }
+        td, th {
+            @apply border border-zinc-300 px-4 py-1;
+        }
+        td {
+            @apply bg-zinc-50;
+        }
+    }
+
+    hr { @apply my-12; }
+
     pre > code {
         font-size: 95% !important;
     }
@@ -26,10 +48,10 @@
     ol, li {
         line-height: 1;
     }
-    ol {
+    ol:not(.contains-task-list) {
         @apply list-decimal ml-5;
     }
-    ul {
+    ul:not(.contains-task-list) {
         @apply list-disc ml-5;
     }
     li {

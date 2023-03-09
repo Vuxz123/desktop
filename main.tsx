@@ -8,6 +8,7 @@ import Database from "tauri-plugin-sql-api"
 import hljs from "highlight.js"
 import { invoke } from "@tauri-apps/api"
 import { useEventListener } from "usehooks-ts"
+import remarkGfm from "remark-gfm"
 
 /** Database connection. */
 let db: Database
@@ -39,6 +40,7 @@ const Markdown = (props: { content: string }) => {
     }, [props.content])
     return useMemo(() => <ReactMarkdown
         className="markdown select-text"
+        remarkPlugins={[remarkGfm]}
         components={{
             code({ node, inline, className, children, ...props }) {
                 if (inline) { return <code className={className} {...props as any}>{children}</code> }
