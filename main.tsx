@@ -199,6 +199,9 @@ const defaultConfigValues = {
     budget: 1,
     maxCostPerMessage: 0.015,
     audioFeedback: 1,
+    webSpeechAPILang: "en-US",
+    webSpeechAPIPitch: 1,
+    webSpeechAPIRate: 1,
 } satisfies Record<string, string | number>
 
 const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -502,7 +505,7 @@ const SearchBar = () => {
 }
 
 /** Renders the application. */
-const App = (props: {}) => {
+const App = () => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const numMessages = useStore((s) => s.visibleMessages.length)
     const numThreads = useStore((s) => s.threads.length)
@@ -966,6 +969,9 @@ const TextToSpeechDialog = () => {
     const azureTTSVoice = useConfigStore((s) => s.azureTTSVoice)
     const pico2waveVoice = useConfigStore((s) => s.pico2waveVoice)
     const ttsBackend = useConfigStore((s) => s.ttsBackend)
+    const webSpeechAPILang = useConfigStore((s) => s.webSpeechAPILang)
+    const webSpeechAPIPitch = useConfigStore((s) => s.webSpeechAPIPitch)
+    const webSpeechAPIRate = useConfigStore((s) => s.webSpeechAPIRate)
     const [voiceList, setVoiceList] = useState<AzureVoiceInfo[]>([])
     const [isPasswordVisible, setIsPasswordVisible] = useState(false)
     const audioFeedback = useConfigStore((s) => s.audioFeedback)
@@ -1049,6 +1055,47 @@ const TextToSpeechDialog = () => {
                                     class="ml-2 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400"
                                     onClick={() => { getVoiceList() }}>Edit</button>
                             </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </>}
+            {ttsBackend === "web-speech-api" && <>
+                <table class="border-separate border-spacing-2">
+                    <tbody>
+                        <tr>
+                            <td>Language</td>
+                            <td><input
+                                value={webSpeechAPILang}
+                                onInput={(ev) => {
+                                    useConfigStore.setState({ webSpeechAPILang: ev.currentTarget.value })
+                                }}
+                                autocomplete="off"
+                                class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
+                                placeholder="en-US"></input></td>
+                        </tr>
+                        <tr>
+                            <td>Pitch</td>
+                            <td><input
+                                value={("" + webSpeechAPIPitch).includes(".") ? webSpeechAPIPitch : webSpeechAPIPitch.toFixed(1)}
+                                onInput={(ev) => {
+                                    if (!Number.isFinite(+ev.currentTarget.value!)) { return }
+                                    useConfigStore.setState({ webSpeechAPIPitch: +ev.currentTarget.value })
+                                }}
+                                autocomplete="off"
+                                class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
+                                placeholder="1.0"></input></td>
+                        </tr>
+                        <tr>
+                            <td>Rate</td>
+                            <td><input
+                                value={("" + webSpeechAPIRate).includes(".") ? webSpeechAPIRate : webSpeechAPIRate.toFixed(1)}
+                                onInput={(ev) => {
+                                    if (!Number.isFinite(+ev.currentTarget.value!)) { return }
+                                    useConfigStore.setState({ webSpeechAPIRate: +ev.currentTarget.value })
+                                }}
+                                autocomplete="off"
+                                class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
+                                placeholder="1.0"></input></td>
                         </tr>
                     </tbody>
                 </table>
@@ -1160,13 +1207,18 @@ const RegenerateResponse = () => {
 }
 
 const speak = async (content: string | null, beepVolume: number) => {
-    const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice } = useConfigStore.getState()
+    const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
     switch (ttsBackend) {
         case "off": {
             break
         } case "web-speech-api": {
             if (window.speechSynthesis) {
-                speechSynthesis.speak(new SpeechSynthesisUtterance(content ?? "Web Speech API"))
+                speechSynthesis.cancel()
+                const utterance = new SpeechSynthesisUtterance(content ?? "Web Speech API")
+                utterance.lang = webSpeechAPILang
+                utterance.pitch = webSpeechAPIPitch
+                utterance.rate = webSpeechAPIRate
+                speechSynthesis.speak(utterance)
             }
             break
         } case "pico2wave": {
