@@ -3,17 +3,17 @@
     windows_subsystem = "windows"
 )]
 
+use rust_tokenizers::tokenizer::{Gpt2Tokenizer, Tokenizer, TruncationStrategy};
+use sqlx::{Connection, Row};
 use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::Mutex;
-
-use rust_tokenizers::tokenizer::{Gpt2Tokenizer, Tokenizer, TruncationStrategy};
-use sqlx::{Connection, Row};
-use tauri::api::http::{Body, ClientBuilder, HttpRequestBuilder, ResponseType};
+use std::time::Duration;
+use tauri::api::http::{Body, ClientBuilder, FormBody, FormPart, HttpRequestBuilder, ResponseType};
 use tempfile::NamedTempFile;
 
 static mut APP_DATA_DIR: Option<PathBuf> = None;
@@ -45,7 +45,10 @@ fn main() {
             sound_waiting_text_completion,
             speak_azure,
             count_tokens,
-            speak_pico2wave
+            speak_pico2wave,
+            get_input_volume,
+            start_listening,
+            stop_listening,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -114,7 +117,6 @@ async fn azure_text_to_speech_request(
     ssml: String,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // fetch in @tauri-apps/api/http in frontend seems not to support binary response body, and the webview didn't play the audio even if it is tied to a mouse event.
-    let client = ClientBuilder::new().max_redirections(3).build()?;
     let request = HttpRequestBuilder::new(
         "POST",
         format!(
@@ -131,6 +133,7 @@ async fn azure_text_to_speech_request(
     .body(Body::Text(ssml.to_owned()))
     .response_type(ResponseType::Binary);
 
+    let client = ClientBuilder::new().max_redirections(3).build()?;
     let response = client.send(request).await?;
     let status = response.status();
     if status != 200 {
@@ -219,6 +222,25 @@ async fn speak_azure(
     (true, "".to_owned())
 }
 
+/// https://github.com/rust-lang/rust/issues/72353#issuecomment-1093729062
+pub struct AtomicF32 {
+    storage: AtomicU32,
+}
+
+impl AtomicF32 {
+    pub fn new(value: f32) -> Self {
+        Self {
+            storage: AtomicU32::new(value.to_bits()),
+        }
+    }
+    pub fn store(&self, value: f32, ordering: Ordering) {
+        self.storage.store(value.to_bits(), ordering)
+    }
+    pub fn load(&self, ordering: Ordering) -> f32 {
+        f32::from_bits(self.storage.load(ordering))
+    }
+}
+
 lazy_static::lazy_static! {
     static ref TOKEN_COUNT_CACHE: Mutex<VecDeque<(String, usize)>> = Mutex::new(VecDeque::new());
     static ref VOCAB_FILE: NamedTempFile = {
@@ -231,6 +253,10 @@ lazy_static::lazy_static! {
         f.write_all(include_bytes!("merges.txt")).unwrap();
         f
     };
+
+    /// [0, infty] -> volume
+    /// -1 -> transcribing
+    static ref INPUT_VOLUME: AtomicF32 = AtomicF32::new(0.0);
 }
 
 #[tauri::command]
@@ -302,4 +328,144 @@ async fn speak_pico2wave(content: String, lang: String) {
 #[tokio::test]
 async fn test_pico2wave() {
     pico2wave("hello", "en-US").await.unwrap();
+}
+
+static RECORDING_COUNTER: AtomicI64 = AtomicI64::new(0);
+
+#[tauri::command]
+fn stop_listening() {
+    RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn get_input_volume() -> f32 {
+    INPUT_VOLUME.load(Ordering::SeqCst)
+}
+
+async fn start_listening_inner(openai_key: &str) -> Result<String, Box<dyn std::error::Error>> {
+    INPUT_VOLUME.store(0.0, Ordering::SeqCst);
+    let mut f = NamedTempFile::new().unwrap();
+
+    {
+        let path = f.path().to_owned();
+        tokio::task::spawn_blocking(move || {
+            use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+            use cpal::SampleFormat;
+            use dasp_sample::conv;
+
+            let device = cpal::default_host()
+                .default_input_device()
+                .expect("Failed to get default input device");
+            let config = device.default_output_config().unwrap();
+            let mut wav_writer = hound::WavWriter::create(
+                path,
+                hound::WavSpec {
+                    channels: 1,
+                    sample_rate: config.config().sample_rate.0,
+                    bits_per_sample: 32,
+                    sample_format: hound::SampleFormat::Float,
+                },
+            )
+            .unwrap();
+
+            let channels = config.channels() as usize;
+            fn update_input_volume(samples: &[f32]) {
+                let mut result = 0.0;
+                for x in samples {
+                    result += (x * x) / samples.len() as f32;
+                }
+                INPUT_VOLUME.store(result.sqrt(), Ordering::SeqCst);
+            }
+            macro_rules! build {
+                ($sample_format:pat, $sample_converter:expr) => {
+                    device
+                        .build_input_stream(
+                            &config.config(),
+                            move |data, _| {
+                                let mut f32_samples = vec![];
+                                for sample in data.chunks(channels) {
+                                    let sum: f32 = sample.iter().map($sample_converter).sum();
+                                    let avg = sum / channels as f32;
+                                    f32_samples.push(avg);
+                                    wav_writer.write_sample(avg).unwrap();
+                                }
+                                update_input_volume(&f32_samples);
+                            },
+                            |_| {},
+                            None,
+                        )
+                        .unwrap()
+                };
+            }
+
+            let stream = match config.sample_format() {
+                SampleFormat::I8 => build!(SampleFormat::I8, |&x| conv::i8::to_f32(x)),
+                SampleFormat::I16 => build!(SampleFormat::I16, |&x| conv::i16::to_f32(x)),
+                SampleFormat::I32 => build!(SampleFormat::I32, |&x| conv::i32::to_f32(x)),
+                SampleFormat::I64 => build!(SampleFormat::I64, |&x| conv::i64::to_f32(x)),
+                SampleFormat::U8 => build!(SampleFormat::U8, |&x| conv::u8::to_f32(x)),
+                SampleFormat::U16 => build!(SampleFormat::U16, |&x| conv::u16::to_f32(x)),
+                SampleFormat::U32 => build!(SampleFormat::U32, |&x| conv::u32::to_f32(x)),
+                SampleFormat::U64 => build!(SampleFormat::U64, |&x| conv::u64::to_f32(x)),
+                SampleFormat::F32 => build!(SampleFormat::F32, |x| x),
+                SampleFormat::F64 => build!(SampleFormat::F64, |&x| conv::f64::to_f32(x)),
+                _ => unimplemented!(),
+            };
+            stream.play().unwrap();
+
+            let precedence = RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+            while precedence == RECORDING_COUNTER.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(50)); // `stream does` not implement Send`
+            }
+        })
+        .await?;
+    }
+    INPUT_VOLUME.store(-1f32, Ordering::SeqCst);
+
+    let mut buf = vec![];
+    f.read_to_end(&mut buf).unwrap();
+    let request =
+        HttpRequestBuilder::new("POST", "https://api.openai.com/v1/audio/transcriptions")?
+            .header("Authorization", format!("Bearer {openai_key}"))?
+            .header("Content-Type", "multipart/form-data")?
+            .body(Body::Form(FormBody::new(
+                [
+                    (
+                        "file".to_owned(),
+                        FormPart::File {
+                            file: tauri::api::http::FilePart::Contents(buf),
+                            mime: Some("audio/x-wav".to_owned()),
+                            file_name: Some("audio.wav".to_owned()),
+                        },
+                    ),
+                    ("model".to_owned(), FormPart::Text("whisper-1".to_owned())),
+                ]
+                .into(),
+            )))
+            .response_type(ResponseType::Json);
+
+    let client = ClientBuilder::new().max_redirections(3).build()?;
+    let response = client.send(request).await?;
+    let status = response.status();
+    if status != 200 {
+        return Err(
+            (status.to_string() + ": " + &response.read().await.unwrap().data.to_string()).into(),
+        );
+    }
+    Ok(response
+        .read()
+        .await?
+        .data
+        .as_object()
+        .unwrap()
+        .get("text")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned())
+}
+
+#[tauri::command]
+async fn start_listening(openai_key: String) -> String {
+    start_listening_inner(&openai_key).await.unwrap() // todo: error handling
 }

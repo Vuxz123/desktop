@@ -232,23 +232,6 @@ const loadConfig = (() => {
     }
 })()
 
-// const useConfig = <T extends keyof typeof defaultConfigValues>(key: T) => {
-//     const [value, setValue] = useState(defaultConfigValues[key])
-//     useEffect(() => {
-//         getConfig(key)
-//             .then((value) => {
-//                 if (value !== defaultConfigValues[key]) {
-//                     setValue(value)
-//                 }
-//             })
-//     }, [])
-//     return value
-// }
-
-// const setConfig = async <T extends keyof typeof defaultConfigValues>(key: T, value: typeof defaultConfigValues[T]) => {
-//     await db.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", [key, value])
-// }
-
 type State = {
     waiting: MessageId[]
     threads: { id: MessageId, name: string | null }[]
@@ -256,6 +239,7 @@ type State = {
     search: string
     folded: Set<MessageId>
     scrollIntoView: MessageId | null
+    listening: boolean
     openUsageDialog: () => void
 }
 
@@ -267,6 +251,7 @@ let useStore = create<State>()(() => ({
     search: "",
     folded: new Set(),
     scrollIntoView: null,
+    listening: false,
     openUsageDialog: () => { },
 }))
 
@@ -386,7 +371,7 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
         const newMessage = await complete(messages)
         await db.execute("UPDATE message SET role = ?, status = ?, content = ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
         reload([...messages.map((v) => v.id), id])
-        speak(newMessage.content, 1).catch(console.error)
+        speak(newMessage.content + (newMessage.status === 1 ? ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.` : ""), 1).catch(console.error)
         useStore.setState({ scrollIntoView: id })
         return newMessage
     } finally {
@@ -593,6 +578,22 @@ const App = () => {
                 [`Show bookmarks`, `${ctrlStr} plus shift plus O`],
             ]
             speak(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "), 0)
+        } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
+            ev.preventDefault()
+            if (useStore.getState().listening) {
+                invoke("stop_listening")
+            } else {
+                const startTime = Date.now()
+                invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey })
+                    .then((res) => {
+                        db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
+                        textareaRef.current!.value += res as string
+                    })
+                    .finally(() => {
+                        useStore.setState({ listening: false })
+                    })
+                useStore.setState({ listening: true })
+            }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyO") {
             ev.preventDefault()
             showBookmarks()
@@ -616,7 +617,7 @@ const App = () => {
             if (visibleMessages.length === 0) {
                 speakIfAudioFeedbackIsEnabled("No messages in the thread.")
             } else {
-                speakIfAudioFeedbackIsEnabled(visibleMessages.at(-1)!.content)
+                speakIfAudioFeedbackIsEnabled(visibleMessages.at(-1)!.content + ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.`)
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyR") {
             // Regenerate response
@@ -812,7 +813,7 @@ Browsing: disabled`, status: 0
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
                         ev.preventDefault()
-                        alert("TODO: speech-to-text")
+                        alert("You can start and stop voice inputting by pressing Ctrl (or Cmd) + Shift + V. TODO: add a dialog")
                     }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -888,6 +889,7 @@ Browsing: disabled`, status: 0
         </div>
         <TextToSpeechDialog />
         <BudgetDialog />
+        <InputVolumeIndicator />
         <dialog
             id="contextmenu"
             class="m-0 px-0 py-[0.15rem] absolute left-0 top-0 z-30 flex flex-col bg-zinc-100 dark:bg-zinc-800 outline-gray-200 dark:outline-zinc-600 shadow-lg whitespace-pre rounded-lg [&:not([open])]:hidden"
@@ -895,6 +897,66 @@ Browsing: disabled`, status: 0
     </>
 }
 
+const InputVolumeIndicator = () => {
+    const listening = useStore((s) => s.listening)
+    const [volume, setVolume] = useState(0)
+    const [transcribing, setTranscribing] = useState(false)
+    useEffect(() => {
+        let canceled = false
+        const loop = async () => {
+            if (canceled) { return }
+            const value = await invoke("get_input_volume") as number
+            if (value === -1) {
+                setTranscribing(true)
+            } else {
+                setVolume(value * 250)
+                setTranscribing(false)
+            }
+            setTimeout(loop, 100)
+        }
+        if (listening) { loop() }
+        return () => { canceled = true }
+    }, [listening])
+    if (!listening) { return <></> }
+    return <div class="absolute top-[35%] left-0 right-0 mx-0 text-center z-50 pointer-events-none">
+        <div class="bg-white w-fit inline-block p-8 rounded-lg shadow-light dark:shadow-dark pointer-events-auto">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline-block dark:stroke-zinc-200" width="110" height="110" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z"></path>
+                <path d="M5 10a7 7 0 0 0 14 0"></path>
+                <path d="M8 21l8 0"></path>
+                <path d="M12 17l0 4"></path>
+            </svg>
+            {transcribing && <div>
+                Transcribing...
+            </div>}
+            {!transcribing && <div class="h-3 w-44 mx-auto mt-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+                    <defs>
+                        <pattern id="pattern_green" patternUnits="userSpaceOnUse" width="13" height="13" patternTransform="rotate(0)">
+                            <line x1="0" y="0" x2="0" y2="13" stroke="#194d70" stroke-width="18" />
+                        </pattern>
+                        <pattern id="pattern_gray" patternUnits="userSpaceOnUse" width="13" height="13" patternTransform="rotate(0)">
+                            <line x1="0" y="0" x2="0" y2="13" stroke="#aaaaaa" stroke-width="18" />
+                        </pattern>
+                    </defs>
+                    <rect width={Math.round(volume) + "%"} height="100%" fill="url(#pattern_green)" opacity="1" />
+                    <rect x={Math.round(volume) + "%"} width={(100 - Math.round(volume)) + "%"} height="100%" fill="url(#pattern_gray)" opacity="1" />
+                </svg>
+            </div>}
+            {!transcribing && <div class="w-fit dark:text-zinc-100 px-4 mx-auto mt-4 rounded-lg shadow-light dark:shadow-dark cursor-pointer border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600"
+                onClick={() => {
+                    invoke("stop_listening")
+                }}>
+                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop inline-block [transform:translateY(-1px)] mr-1" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                    <path d="M17 4h-10a3 3 0 0 0 -3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3 -3v-10a3 3 0 0 0 -3 -3z" stroke-width="0" fill="currentColor"></path>
+                </svg>
+                stop
+            </div>}
+        </div>
+    </div>
+}
 const SearchResult = () => {
     const search = useStore((s) => s.search)
     const [messages, setMessages] = useState<{ id: number, content: string }[]>([])
@@ -1122,6 +1184,7 @@ ORDER BY count DESC`, [now.toISOString()])
 const BudgetDialog = () => {
     const [totalTokens, setTotalTokens] = useState<{ model: string, sum: number, count: number }[]>([])
     const [totalTTSCharacters, setTotalTTSCharacters] = useState<number>(-1)
+    const [totalSpeechToTextMinutes, setTotalSpeechToTextMinutes] = useState<number>(-1)
     const budget = useConfigStore((s) => s.budget)
     const maxCostPerMessage = useConfigStore((s) => s.maxCostPerMessage)
     const [month, setMonth] = useState("")
@@ -1130,13 +1193,18 @@ const BudgetDialog = () => {
         useStore.setState({
             openUsageDialog: async () => {
                 const now = new Date()
-                setMonth(Intl.DateTimeFormat("en-US", { month: "long" }).format(now))
+                setMonth(Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(now))
                 setTotalTokens(await getTokenUsage(now))
                 setTotalTTSCharacters((await db.select<{ count: number }[]>(`\
 SELECT
     coalesce(sum(numCharacters), 0) as count
 FROM textToSpeechUsage
 WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, [now.toISOString()]))[0]?.count ?? 0)
+                setTotalSpeechToTextMinutes(((await db.select<{ sumMs: number }[]>(`\
+SELECT
+    coalesce(sum(durationMs), 0) as sumMs
+FROM speechToTextUsage
+WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.sumMs ?? 0) / 1000 / 60)
                 document.querySelector<HTMLDialogElement>("#budget")?.showModal()
             }
         })
@@ -1181,6 +1249,15 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, [now.toISO
                 </thead>
                 <tbody class="[&_td]:px-4">
                     <tr><td>Azure</td><td class="text-left">{totalTTSCharacters}</td><td class="text-right">{totalTTSCharacters} / 500000 ({(totalTTSCharacters / 500000 * 100).toFixed(1)}%)</td><td class="text-right">{(totalTTSCharacters / 1000000 * 16).toFixed(6)}</td></tr>
+                </tbody>
+            </table>
+            <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">Speech-to-text Usage ({month})</h2>
+            <table class="mx-auto">
+                <thead class="[&_th]:px-4">
+                    <tr class="border-b border-b-zinc-300"><th>Model</th><th>Usage [min]</th><th>Price [USD]</th></tr>
+                </thead>
+                <tbody class="[&_td]:px-4">
+                    <tr><td>whisper-1</td><td>{totalSpeechToTextMinutes.toFixed(1)}</td><td>{(totalSpeechToTextMinutes * 0.006).toFixed(3)}</td></tr>
                 </tbody>
             </table>
             <div class="mt-8 italic text-zinc-300">The pricing information provided by this software is an estimate, and the hard-coded prices can be out of date.</div>
@@ -1293,6 +1370,12 @@ CREATE TABLE IF NOT EXISTS textCompletionUsage (
 CREATE TABLE IF NOT EXISTS textToSpeechUsage (
     region TEXT NOT NULL,
     numCharacters INTEGER NOT NULL,
+    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS speechToTextUsage (
+    model TEXT NOT NULL,
+    durationMs INTEGER NOT NULL,
     timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) STRICT;
 
