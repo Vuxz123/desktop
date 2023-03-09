@@ -565,17 +565,18 @@ const App = () => {
             const ctrlStr = isMac ? "command" : "control"
             const keybindings: [string, string][] = [
                 [`Help`, `${ctrlStr} plus H`],
-                [`Speak texts in the input box`, `${ctrlStr} plus U`],
+                [`Speak the text in the input box`, `${ctrlStr} plus U`],
                 [`Focus the input box`, `${ctrlStr} plus L`],
-                [`Move to a new thread`, `${ctrlStr} plus N`],
+                [`Create a new thread`, `${ctrlStr} plus N`],
                 [`Speak the last response from the assistant`, `${ctrlStr} plus R`],
-                [`Move to the newer thread`, `${ctrlStr} plus tab`],
-                [`Move to the older thread`, `${ctrlStr} plus shift plus tab`],
+                [`Move to the next thread`, `${ctrlStr} plus tab`],
+                [`Move to the previous thread`, `${ctrlStr} plus shift plus tab`],
                 [`Regenerate response`, `${ctrlStr} plus shift plus R`],
                 [`Send message`, `${ctrlStr} plus enter`],
                 [`Fold all assistant's responses`, `${ctrlStr} plus K, then zero`],
                 [`Unfold all assistant's responses`, `${ctrlStr} plus K, then J`],
                 [`Show bookmarks`, `${ctrlStr} plus shift plus O`],
+                [`Start/Stop recording`, `${ctrlStr} plus shift plus V`],
             ]
             speak(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "), 0)
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
