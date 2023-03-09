@@ -26,6 +26,9 @@ https://github.com/chatgptui/desktop/releases
 
 Use Command instead of Ctrl on Mac.
 
+# Building from Source
+See https://github.com/chatgptui/desktop/wiki/Building-from-Source
+
 # Related Projects
 - https://github.com/Loeffeldude/my-chat-gpt
 - https://www.typingmind.com/
