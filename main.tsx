@@ -983,6 +983,7 @@ const TextToSpeechDialog = () => {
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { speak(null, 1) }}>Test text-to-speech</button>
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
             <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as "system" | "azure" }) }}>
+                <option value="off">Disabled</option>
                 <option value="system">System</option>
                 <option value="pico2wave">pico2wave</option>
                 <option value="web-speech-api" disabled={!window.speechSynthesis}>Web Speech API {window.speechSynthesis ? "" : "(undetected)"}</option>
