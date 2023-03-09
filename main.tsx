@@ -190,7 +190,7 @@ type MessageId = number
 
 const defaultConfigValues = {
     APIKey: "",
-    ttsBackend: (window.speechSynthesis ? "web-speech-api" : "pico2wave") as "off" | "system" | "pico2wave" | "web-speech-api" | "azure",
+    ttsBackend: (window.speechSynthesis ? "web-speech-api" : "off") as "off" | "system" | "pico2wave" | "web-speech-api" | "azure",
     azureTTSRegion: "",
     azureTTSResourceKey: "",
     azureTTSVoice: "en-US-ChristopherNeural",
