@@ -190,11 +190,12 @@ type MessageId = number
 
 const defaultConfigValues = {
     APIKey: "",
-    ttsBackend: "system" satisfies "system" | "azure" as "system" | "azure",
+    ttsBackend: (window.speechSynthesis ? "web-speech-api" : "pico2wave") as "off" | "system" | "pico2wave" | "web-speech-api" | "azure",
     azureTTSRegion: "",
     azureTTSResourceKey: "",
     azureTTSVoice: "en-US-ChristopherNeural",
     azureTTSLang: "en-US",
+    pico2waveVoice: "en-US" as "en-US" | "en-GB" | "de-DE" | "es-ES" | "fr-FR" | "it-IT",
     budget: 1,
     maxCostPerMessage: 0.015,
     audioFeedback: 1,
@@ -963,6 +964,7 @@ const TextToSpeechDialog = () => {
     const azureTTSRegion = useConfigStore((s) => s.azureTTSRegion)
     const azureTTSResourceKey = useConfigStore((s) => s.azureTTSResourceKey)
     const azureTTSVoice = useConfigStore((s) => s.azureTTSVoice)
+    const pico2waveVoice = useConfigStore((s) => s.pico2waveVoice)
     const ttsBackend = useConfigStore((s) => s.ttsBackend)
     const [voiceList, setVoiceList] = useState<AzureVoiceInfo[]>([])
     const [isPasswordVisible, setIsPasswordVisible] = useState(false)
@@ -976,14 +978,37 @@ const TextToSpeechDialog = () => {
 
     return <dialog id="text-to-speech" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Output Device</h2>
+            <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Output Device</h2>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
-            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { speak("Microsoft Speech Service Text-to-Speech API", 1) }}>Test text-to-speech</button>
-            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
+            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { speak(null, 1) }}>Test text-to-speech</button>
+            <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
             <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as "system" | "azure" }) }}>
                 <option value="system">System</option>
+                <option value="pico2wave">pico2wave</option>
+                <option value="web-speech-api" disabled={!window.speechSynthesis}>Web Speech API {window.speechSynthesis ? "" : "(undetected)"}</option>
                 <option value="azure">Microsoft Azure Text-to-speech API</option>
             </select>
+            {ttsBackend === "pico2wave" && <div>
+                <table class="border-separate border-spacing-2">
+                    <tbody>
+                        <tr>
+                            <td>Installation (Debian/Ubuntu)</td>
+                            <td><code class="select-text">sudo apt install -y libttspico-utils</code></td>
+                        </tr>
+                        <tr>
+                            <td>Voice</td>
+                            <td><select value={pico2waveVoice} onChange={(ev) => { useConfigStore.setState({ pico2waveVoice: ev.currentTarget.value as any }) }} class="text-zinc-600 px-2">
+                                <option value="en-US">en-US</option>
+                                <option value="en-GB">en-GB</option>
+                                <option value="de-DE">de-DE</option>
+                                <option value="es-ES">es-ES</option>
+                                <option value="fr-FR">fr-FR</option>
+                                <option value="it-IT">it-IT</option>
+                            </select></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>}
             {ttsBackend === "azure" && <>
                 <table class="border-separate border-spacing-2">
                     <tbody>
@@ -1027,7 +1052,7 @@ const TextToSpeechDialog = () => {
                     </tbody>
                 </table>
             </>}
-            <h2 class="text-xl border-b mb-6 text-emerald-400 border-b-emerald-400">Audio Feedback</h2>
+            <h2 class="text-xl border-b mt-6 mb-3 text-emerald-400 border-b-emerald-400">Audio Feedback</h2>
             <select class="px-2 text-zinc-600" value={audioFeedback ? "on" : "off"} onChange={(ev) => { useConfigStore.setState({ audioFeedback: ev.currentTarget.value === "on" ? 1 : 0 }) }}>
                 <option value="on">enabled</option>
                 <option value="off">disabled</option>
@@ -1075,7 +1100,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, [now.toISO
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Budget</h2>
             <table class="border-separate border-spacing-2 w-full">
                 <tr><td>
-                    Budget<br />
+                    Max cost per month<br />
                     <span class="text-xs">Alerts and temporary disables the application when usage exceeds this amount.</span>
                 </td><td>$ <input class="bg-zinc-600 pl-2 rounded" value={("" + budget).includes(".") ? budget : budget.toFixed(1)} onInput={(ev) => {
                     if (!Number.isFinite(+ev.currentTarget.value!)) { return }
@@ -1083,7 +1108,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, [now.toISO
                 }}></input></td></tr>
                 <tr><td>
                     Max cost per message<br />
-                    <span class="text-xs">Excludes past messages from the request to keep the price below this price.</span>
+                    <span class="text-xs">Excludes past messages from the request to keep the cost below this value.</span>
                 </td><td>
                         $ <input class="bg-zinc-600 pl-2 rounded" value={("" + maxCostPerMessage).includes(".") ? maxCostPerMessage : maxCostPerMessage.toFixed(1)} onInput={(ev) => {
                             if (!Number.isFinite(+ev.currentTarget.value!)) { return }
@@ -1133,21 +1158,38 @@ const RegenerateResponse = () => {
     </div> : <></>
 }
 
-const speak = async (content: string, beepVolume: number) => {
-    const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang } = useConfigStore.getState()
-    if (ttsBackend === "system") { return } // TODO: not implemented
+const speak = async (content: string | null, beepVolume: number) => {
+    const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice } = useConfigStore.getState()
+    switch (ttsBackend) {
+        case "off": {
+            break
+        } case "web-speech-api": {
+            if (window.speechSynthesis) {
+                speechSynthesis.speak(new SpeechSynthesisUtterance(content ?? "Web Speech API"))
+            }
+            break
+        } case "pico2wave": {
+            await invoke("speak_pico2wave", { content: content ?? "pico2wave", lang: pico2waveVoice })
+            break
+        } case "system": {
+            break
+        } case "azure": {
+            if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey || !azureTTSVoice) { return }
+            const ssml = `<speak version='1.0' xml:lang='${azureTTSLang}'><voice xml:lang='${azureTTSLang}' name='${azureTTSVoice}'>${(content ?? "Microsoft Speech Service Text-to-Speech API").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</voice></speak>`
+            await db.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, ssml.length])
 
-    if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey || !azureTTSVoice) { return }
-    const ssml = `<speak version='1.0' xml:lang='${azureTTSLang}'><voice xml:lang='${azureTTSLang}' name='${azureTTSVoice}'>${content.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</voice></speak>`
-    await db.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, ssml.length])
-
-    const res = await invoke<[ok: boolean, body: string]>("azure_text_to_speech", {
-        region: azureTTSRegion,
-        resourceKey: azureTTSResourceKey,
-        ssml,
-        beepVolume,
-    })
-    if (!res[0]) { console.error(res[1]); return }
+            const res = await invoke<[ok: boolean, body: string]>("speak_azure", {
+                region: azureTTSRegion,
+                resourceKey: azureTTSResourceKey,
+                ssml,
+                beepVolume,
+            })
+            if (!res[0]) { console.error(res[1]); return }
+            break
+        } default: {
+            ttsBackend satisfies never
+        }
+    }
 }
 
 /** The entry point. */

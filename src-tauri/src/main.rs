@@ -4,8 +4,9 @@
 )]
 
 use std::collections::VecDeque;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::Mutex;
@@ -42,8 +43,9 @@ fn main() {
             sound_test,
             sound_focus_input,
             sound_waiting_text_completion,
-            azure_text_to_speech,
-            count_tokens
+            speak_azure,
+            count_tokens,
+            speak_pico2wave
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -88,9 +90,9 @@ async fn sound_waiting_text_completion() {
     .unwrap();
 }
 
-async fn play_audio(data: Vec<u8>, order: i64) {
+async fn play_audio(data: Vec<u8>, precedence: i64) -> std::io::Result<()> {
     if data.is_empty() {
-        return; // fixes UnrecognizedFormat error
+        return Ok(()); // fixes UnrecognizedFormat error
     }
     tokio::task::spawn_blocking(move || {
         let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
@@ -98,12 +100,12 @@ async fn play_audio(data: Vec<u8>, order: i64) {
         let source = rodio::Decoder::new(std::io::Cursor::new(data)).unwrap();
         let sink = rodio::Sink::try_new(&stream_handle).unwrap();
         sink.append(source);
-        while !sink.empty() && order == AUDIO_PLAYBACK_COUNTER.load(Ordering::SeqCst) {
+        while !sink.empty() && precedence == AUDIO_PLAYBACK_COUNTER.load(Ordering::SeqCst) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
     })
-    .await
-    .unwrap();
+    .await?;
+    Ok(())
 }
 
 async fn azure_text_to_speech_request(
@@ -154,13 +156,13 @@ async fn azure_text_to_speech_request(
 }
 
 #[tauri::command]
-async fn azure_text_to_speech(
+async fn speak_azure(
     region: String,
     resource_key: String,
     ssml: String,
     beep_volume: f32,
 ) -> (bool, String) {
-    let order = AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+    let precedence = AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
     {
         std::fs::create_dir_all(unsafe { APP_DATA_DIR.clone().unwrap() }).unwrap();
@@ -181,7 +183,7 @@ async fn azure_text_to_speech(
             .await
             .unwrap();
         if let Some(data) = cached_audio {
-            play_audio(data.get("audio"), order).await;
+            play_audio(data.get("audio"), precedence).await.unwrap();
             return (true, "".to_owned());
         }
     }
@@ -213,7 +215,7 @@ async fn azure_text_to_speech(
     };
 
     sender.send(()).unwrap();
-    play_audio(data, order).await;
+    play_audio(data, precedence).await.unwrap();
     (true, "".to_owned())
 }
 
@@ -270,4 +272,34 @@ async fn count_tokens(content: String) -> usize {
     }
 
     count
+}
+
+/// lang: en-US, en-GB, de-DE, es-ES, fr-FR, or it-IT
+async fn pico2wave(content: &str, lang: &str) -> std::io::Result<()> {
+    let precedence = AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut f = tempfile::Builder::new().suffix(".wav").tempfile()?;
+    let path = f.path().to_str().unwrap();
+    let output = Command::new("pico2wave")
+        .args(&[&format!("-w={path}"), &format!("--lang={lang}"), content])
+        .output()?;
+    if !output.status.success() {
+        let s: &str = std::str::from_utf8(&output.stderr).unwrap();
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, s));
+    }
+    println!("{:?}", output.status.success());
+    let mut buf = Vec::<u8>::new();
+    f.read_to_end(&mut buf)?;
+    println!("{:?}", buf.len());
+    play_audio(buf, precedence).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn speak_pico2wave(content: String, lang: String) {
+    pico2wave(&content, &lang).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_pico2wave() {
+    pico2wave("hello", "en-US").await.unwrap();
 }
