@@ -2,7 +2,7 @@ import { render } from "preact"
 import { Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import ReactMarkdown from "react-markdown"
 import { open } from '@tauri-apps/api/shell'
-import { fetch, Body } from '@tauri-apps/api/http'
+import { fetch } from '@tauri-apps/api/http'
 import { create } from "zustand"
 import Database from "tauri-plugin-sql-api"
 import hljs from "highlight.js"
@@ -54,7 +54,15 @@ const Markdown = (props: { content: string }) => {
                     </div>
                     <code class={"rounded-b " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
                 </>
-            }
+            },
+            a(props) {
+                return <a href={props.href} onClick={(ev) => {
+                    ev.preventDefault()
+                    if (props.href) {
+                        open(props.href)
+                    }
+                }}>{props.children}</a>
+            },
         }}>{props.content}</ReactMarkdown>, [props.content])
 }
 
