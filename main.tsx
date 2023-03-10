@@ -246,6 +246,7 @@ const defaultConfigValues = {
     webSpeechAPIPitch: 1,
     webSpeechAPIRate: 1,
     reversedView: 0,
+    whisperLanguage: "",
 } satisfies Record<string, string | number>
 
 const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -672,7 +673,7 @@ const App = () => {
                 invoke("stop_listening")
             } else {
                 const startTime = Date.now()
-                invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey })
+                invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
                     .then((res) => {
                         db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
                         textareaRef.current!.value += res as string
@@ -904,7 +905,7 @@ Browsing: disabled`, status: 0
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
                         ev.preventDefault()
-                        alert("You can start and stop voice inputting by pressing Ctrl (or Cmd) + Shift + V. TODO: add a dialog")
+                        document.querySelector<HTMLDialogElement>("#speech-to-text")!.showModal()
                     }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -1005,6 +1006,7 @@ Browsing: disabled`, status: 0
                 </div>
             </div>
         </div>
+        <SpeechToTextDialog />
         <TextToSpeechDialog />
         <BudgetDialog />
         <InputVolumeIndicator />
@@ -1194,6 +1196,25 @@ type AzureVoiceInfo = {
     VoiceType: string  // 'Neural'
     Status: string  // 'GA'
     WordsPerMinute: string  // '147'
+}
+
+const SpeechToTextDialog = () => {
+    const whisperLanguage = useConfigStore((s) => s.whisperLanguage)
+    return <dialog id="speech-to-text" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+        <div class="px-20 py-8 w-fit">
+            <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Speech to text</h2>
+            <h3 class="font-semibold my-2">Keybinding</h3>
+            <ul>
+                <li>Start <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
+                <li>Stop <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
+            </ul>
+            <h3 class="font-semibold my-2">Language</h3>
+            <input value={whisperLanguage} onChange={(ev) => { useConfigStore.setState({ whisperLanguage: ev.currentTarget.value }) }} class="mb-1 shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100" placeholder="en"></input>
+            <p>
+                Specify <a class="cursor-pointer text-blue-300 border-b border-b-blue-300 whitespace-nowrap" onClick={() => { open("https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes") }}>ISO-639-1 language code</a> for improved performance.
+            </p>
+        </div>
+    </dialog>
 }
 
 const TextToSpeechDialog = () => {

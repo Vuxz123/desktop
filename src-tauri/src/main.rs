@@ -346,7 +346,10 @@ fn get_input_volume() -> f32 {
     INPUT_VOLUME.load(Ordering::SeqCst)
 }
 
-async fn start_listening_inner(openai_key: &str) -> Result<String, Box<dyn std::error::Error>> {
+async fn start_listening_inner(
+    openai_key: &str,
+    language: &str, // "" to auto-detect
+) -> Result<String, Box<dyn std::error::Error>> {
     INPUT_VOLUME.store(0.0, Ordering::SeqCst);
     let mut f = NamedTempFile::new().unwrap();
 
@@ -428,24 +431,24 @@ async fn start_listening_inner(openai_key: &str) -> Result<String, Box<dyn std::
 
     let mut buf = vec![];
     f.read_to_end(&mut buf).unwrap();
+    let mut body = HashMap::new();
+    body.insert(
+        "file".to_owned(),
+        FormPart::File {
+            file: tauri::api::http::FilePart::Contents(buf),
+            mime: Some("audio/x-wav".to_owned()),
+            file_name: Some("audio.wav".to_owned()),
+        },
+    );
+    body.insert("model".to_owned(), FormPart::Text("whisper-1".to_owned()));
+    if !language.is_empty() {
+        body.insert("language".to_owned(), FormPart::Text(language.to_owned()));
+    }
     let request =
         HttpRequestBuilder::new("POST", "https://api.openai.com/v1/audio/transcriptions")?
             .header("Authorization", format!("Bearer {openai_key}"))?
             .header("Content-Type", "multipart/form-data")?
-            .body(Body::Form(FormBody::new(
-                [
-                    (
-                        "file".to_owned(),
-                        FormPart::File {
-                            file: tauri::api::http::FilePart::Contents(buf),
-                            mime: Some("audio/x-wav".to_owned()),
-                            file_name: Some("audio.wav".to_owned()),
-                        },
-                    ),
-                    ("model".to_owned(), FormPart::Text("whisper-1".to_owned())),
-                ]
-                .into(),
-            )))
+            .body(Body::Form(FormBody::new(body)))
             .response_type(ResponseType::Json);
 
     let client = ClientBuilder::new().max_redirections(3).build()?;
@@ -470,8 +473,11 @@ async fn start_listening_inner(openai_key: &str) -> Result<String, Box<dyn std::
 }
 
 #[tauri::command]
-async fn start_listening(openai_key: String) -> String {
-    start_listening_inner(&openai_key).await.unwrap() // todo: error handling
+async fn start_listening(
+    openai_key: String,
+    language: String, // "" to auto-detect
+) -> String {
+    start_listening_inner(&openai_key, &language).await.unwrap() // todo: error handling
 }
 
 fn handle_chat_completion_server_event(
