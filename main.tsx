@@ -133,6 +133,14 @@ const Message = (props: { depth: number }) => {
     if (role === "root" || role === "system") {
         return <></>
     } else {
+        const saveAndSubmit = async () => {
+            const s = useStore.getState()
+            const userMessage = { role: "user", content: textareaRef.current!.value, status: 0 } as const
+            const user = await appendMessage(s.visibleMessages.slice(0, props.depth).map((v) => v.id), userMessage)
+            setEditing(false)
+            reload([...s.visibleMessages.map((v) => v.id), user])
+            await completeAndAppend([...s.visibleMessages.slice(0, props.depth), { id: user, ...userMessage }])
+        }
         return <div ref={ref} class={"border-b border-b-zinc-200 dark:border-b-0" + (status === 1 ? " bg-red-100 dark:bg-red-900" : role === "assistant" ? " bg-zinc-100 dark:bg-zinc-700" : "")}>
             <div class="max-w-3xl mx-auto relative p-6 pt-8">
                 {/* Role and toggle switches */}
@@ -196,20 +204,19 @@ const Message = (props: { depth: number }) => {
                 {/* Textarea */}
                 {editing && <>
                     <textarea ref={textareaRef} class="w-full mt-2 p-2 shadow-light dark:shadow-dark dark:bg-zinc-700 rounded-lg resize-none" value={content}
+                        onKeyDown={(ev) => {
+                            if (ctrlOrCmd(ev) && ev.code === "Enter") {
+                                ev.preventDefault()
+                                saveAndSubmit()
+                            }
+                        }}
                         onInput={(ev) => {
                             // Auto-fit to the content https://stackoverflow.com/a/48460773/10710682
                             ev.currentTarget!.style.height = ""
                             ev.currentTarget!.style.height = Math.min(window.innerHeight / 2, ev.currentTarget!.scrollHeight) + "px"
                         }}></textarea>
                     <div class="text-center">
-                        <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={async () => {
-                            const s = useStore.getState()
-                            const userMessage = { role: "user", content: textareaRef.current!.value, status: 0 } as const
-                            const user = await appendMessage(s.visibleMessages.slice(0, props.depth).map((v) => v.id), userMessage)
-                            setEditing(false)
-                            reload([...s.visibleMessages.map((v) => v.id), user])
-                            await completeAndAppend([...s.visibleMessages.slice(0, props.depth), { id: user, ...userMessage }])
-                        }}>Save & Submit</button>
+                        <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={saveAndSubmit}>Save & Submit</button>
                         <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { setEditing(false) }}>Cancel</button>
                     </div>
                 </>}
