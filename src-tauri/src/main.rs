@@ -195,8 +195,13 @@ async fn speak_azure(
     resource_key: String,
     ssml: String,
     beep_volume: f32,
+    pre_fetch: bool,
 ) -> (bool, String) {
-    let precedence = AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+    let precedence = if pre_fetch {
+        0
+    } else {
+        AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst) + 1
+    };
 
     {
         std::fs::create_dir_all(unsafe { APP_DATA_DIR.clone().unwrap() }).unwrap();
@@ -217,7 +222,9 @@ async fn speak_azure(
             .await
             .unwrap();
         if let Some(data) = cached_audio {
-            play_audio(data.get("audio"), precedence).await.unwrap();
+            if !pre_fetch {
+                play_audio(data.get("audio"), precedence).await.unwrap();
+            }
             return (true, "".to_owned());
         }
     }
@@ -249,7 +256,9 @@ async fn speak_azure(
     };
 
     sender.send(()).unwrap();
-    play_audio(data, precedence).await.unwrap();
+    if !pre_fetch {
+        play_audio(data, precedence).await.unwrap();
+    }
     (true, "".to_owned())
 }
 

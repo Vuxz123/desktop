@@ -36,6 +36,120 @@ type Message = PartialMessage & {
     note: string | null  // bookmark
 }
 
+class SplitLines {
+    private content = ""
+    constructor(private readonly callback: (line: string) => void) { }
+    add(delta: string) {
+        this.content += delta
+        while (true) {
+            const i = this.content.indexOf("\n")
+            if (i === -1) { break }
+            this.callback(this.content.slice(0, i))
+            this.content = this.content.slice(i + 1)
+        }
+    }
+    end() {
+        this.callback(this.content)
+        this.content = ""
+    }
+}
+
+class TextToSpeechQueue {
+    private readonly queue: (() => Promise<void>)[] = []
+    private running = false
+    private textId: number | null = null
+
+    /** Clears the queue. */
+    async cancel() {
+        await invoke("stop_audio")
+        if (window.speechSynthesis) {
+            try { window.speechSynthesis.cancel() } catch { }
+        }
+        this.queue.length = 0
+    }
+
+    /** Clears the queue and enqueues the text. */
+    async speakText(content: string | null) {
+        await this.cancel()
+        this.textId = null
+        await (await this.prepare(content))?.()
+    }
+
+    /** Enqueues a text if the given textId is the same as the previous one. */
+    async pushSegment(textId: number, content: string) {
+        if (this.textId !== textId) {
+            this.queue.length = 0
+            this.textId = textId
+        }
+        const speak = this.prepare(content)
+        this.queue.push(async () => {
+            await (await speak)?.()
+        })
+        if (!this.running) {
+            this.running = true
+            try {
+                while (this.queue.length > 0) {
+                    await this.queue.shift()?.()
+                }
+            } finally {
+                this.queue.length = 0
+                this.running = false
+            }
+        }
+    }
+
+    private async prepare(content: string | null): Promise<(() => Promise<void>) | void> {
+        const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
+        switch (ttsBackend) {
+            case "off": {
+                break
+            } case "web-speech-api": {
+                if (window.speechSynthesis) {
+                    return async () => {
+                        speechSynthesis.cancel()
+                        const utterance = new SpeechSynthesisUtterance(content ?? "Web Speech API")
+                        utterance.lang = webSpeechAPILang
+                        utterance.pitch = webSpeechAPIPitch
+                        utterance.rate = webSpeechAPIRate
+                        speechSynthesis.speak(utterance)
+                        return new Promise<void>((resolve, reject) => {
+                            utterance.addEventListener("end", () => { resolve() })
+                            utterance.addEventListener("pause", () => { resolve() })
+                            utterance.addEventListener("error", (ev) => { reject(new Error(ev.error)) })
+                        })
+                    }
+                }
+                break
+            } case "pico2wave": {
+                return async () => { await invoke("speak_pico2wave", { content: content ?? "pico2wave", lang: pico2waveVoice }) }
+            } case "azure": {
+                if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey || !azureTTSVoice) { return }
+                const ssml = `<speak version='1.0' xml:lang='${azureTTSLang}'><voice xml:lang='${azureTTSLang}' name='${azureTTSVoice}'>${(content ?? "Microsoft Speech Service Text-to-Speech API").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</voice></speak>`
+                await db.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, ssml.length])
+                const res = await invoke<[ok: boolean, body: string]>("speak_azure", {
+                    region: azureTTSRegion,
+                    resourceKey: azureTTSResourceKey,
+                    ssml,
+                    beepVolume: 0,
+                    preFetch: true,
+                })
+                if (!res[0]) { console.error(res[1]); return }
+                return async () => {
+                    await invoke<[ok: boolean, body: string]>("speak_azure", {
+                        region: azureTTSRegion,
+                        resourceKey: azureTTSResourceKey,
+                        ssml,
+                        beepVolume: 0,
+                        preFetch: false,
+                    })
+                }
+            } default: {
+                ttsBackend satisfies never
+            }
+        }
+    }
+}
+
 const isMac = navigator.platform.startsWith("Mac")
 const ctrlOrCmd = (ev: KeyboardEvent) => (isMac ? /* cmd */ev.metaKey : ev.ctrlKey)
 
@@ -118,19 +232,6 @@ const Message = (props: { depth: number }) => {
         useStore.setState({ scrollIntoView: null })
     }, [ref, scrollIntoView])
 
-    useEffect(() => {
-        if (waiting) {
-            let playing = true
-            const loop = async () => {
-                if (!playing) { return }
-                await invoke("sound_waiting_text_completion")
-                setTimeout(() => { loop() }, 800);
-            }
-            if (useConfigStore.getState().audioFeedback) { loop() }
-            return () => { playing = false }
-        }
-    }, [waiting])
-
     if (role === "root" || role === "system") {
         return <></>
     } else {
@@ -168,7 +269,16 @@ const Message = (props: { depth: number }) => {
 
                 {/* Play audio */}
                 <span title="Play audio" class="text-zinc-600 absolute top-1 right-4 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => { if (content) { speak(content, 1) } }}>
+                    onClick={() => {
+                        if (content) {
+                            const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                            const splitLines = new SplitLines((line) => {
+                                useStore.getState().ttsQueue.pushSegment(id, line)
+                            })
+                            splitLines.add(content)
+                            splitLines.end()
+                        }
+                    }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-play inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M7 4v16l13 -8z"></path>
@@ -311,6 +421,7 @@ type State = {
     folded: Set<MessageId>
     scrollIntoView: MessageId | null
     listening: boolean
+    ttsQueue: TextToSpeechQueue
     openUsageDialog: () => void
     openBookmarkDialog: () => void
 }
@@ -324,6 +435,7 @@ let useStore = create<State>()(() => ({
     folded: new Set(),
     scrollIntoView: null,
     listening: false,
+    ttsQueue: new TextToSpeechQueue(),
     openUsageDialog: () => { },
     openBookmarkDialog: () => { }
 }))
@@ -367,7 +479,7 @@ const appendMessage = async (parents: number[], message: Readonly<PartialMessage
 const chatGPTPricePerToken = 0.002 / 1000
 
 /** Generates an assistant's response. */
-const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[], handleStream?: (content: string) => Promise<void>): Promise<PartialMessage> => {
+const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[], handleStream?: (content: string, delta: string) => Promise<void>): Promise<PartialMessage> => {
     try {
         const usage = await getTokenUsage()
         if (
@@ -397,6 +509,7 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
             const loop = async () => {
                 const done2 = done
                 try {
+                    let delta = ""
                     for (const v of await invoke<string[]>("get_chat_completion", { requestId })) {
                         let partial: {
                             choices: {
@@ -416,11 +529,12 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
                             throw new Error(`Parse error: ${v}`)
                         }
                         if (partial.choices[0]?.delta?.content) {
-                            result.content += partial.choices[0].delta.content
+                            delta += partial.choices[0].delta.content
                         }
                     }
+                    result.content += delta
                     if (!err) {
-                        await handleStream?.(result.content)
+                        await handleStream?.(result.content, delta)
                     }
                 } catch (err) {
                     reject(err)
@@ -467,17 +581,23 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
     const id = await appendMessage(messages.map((v) => v.id), { role: "assistant", content: "", status: -1 })
     useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
     try {
-        const newMessage = await complete(messages, async (content) => {
+        const ttsId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+        const splitLines = new SplitLines((line) => {
+            useStore.getState().ttsQueue.pushSegment(ttsId, line)
+        })
+        const newMessage = await complete(messages, async (content, delta) => {
+            splitLines.add(delta)
             await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
             reload([...messages.map((v) => v.id), id])
         })
+        splitLines.end()
         if (newMessage.status === 1) {
             await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
+            useStore.getState().ttsQueue.speakText(newMessage.content + `\nPress ${isMac ? "command" : "control"} plus shift plus R to retry.`)
         } else {
             await db.execute("UPDATE message SET role = ?, status = ? WHERE id = ?", [newMessage.role, newMessage.status, id])
         }
         reload([...messages.map((v) => v.id), id])
-        speak(newMessage.content + (newMessage.status === 1 ? ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.` : ""), 1).catch(console.error)
         useStore.setState({ scrollIntoView: id })
         return newMessage
     } finally {
@@ -607,13 +727,6 @@ const SearchBar = () => {
         placeholder="Search"></input>
 }
 
-const stopAudio = () => {
-    invoke("stop_audio")
-    if (window.speechSynthesis) {
-        try { window.speechSynthesis.cancel() } catch { }
-    }
-}
-
 /** Renders the application. */
 const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -663,13 +776,13 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     const openThread = (id: MessageId) => {
         reload([id])
         focusInput()
-        if (useConfigStore.getState().audioFeedback) { speak(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", 0) }
+        if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread") }
         document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({ behavior: "smooth" })
     }
 
     const startListening = () => {
         const startTime = Date.now()
-        stopAudio()
+        useStore.getState().ttsQueue.cancel()
         invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
             .then((res) => {
                 db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
@@ -702,11 +815,12 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 return
             }
         }
-        const speakIfAudioFeedbackIsEnabled = (content: string) => { if (useConfigStore.getState().audioFeedback) { speak(content, 0) } }
+
+        const speakIfAudioFeedbackIsEnabled = (content: string) => { if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(content) } }
 
         if (ev.code === "Escape") {
             ev.preventDefault()
-            stopAudio()
+            useStore.getState().ttsQueue.cancel()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyH") {
             // Help
             ev.preventDefault()
@@ -728,7 +842,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 [`Show bookmarks`, `${ctrlStr} plus shift plus O`],
                 [`Start or Stop recording`, `${ctrlStr} plus shift plus V`],
             ]
-            speak(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "), 0)
+            useStore.getState().ttsQueue.speakText(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "))
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
             ev.preventDefault()
             if (useStore.getState().listening) {
@@ -764,7 +878,12 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             if (visibleMessages.length === 0) {
                 speakIfAudioFeedbackIsEnabled("No messages in the thread.")
             } else {
-                speakIfAudioFeedbackIsEnabled(visibleMessages.at(-1)!.content + ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.`)
+                const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                const splitLines = new SplitLines((line) => {
+                    useStore.getState().ttsQueue.pushSegment(id, line)
+                })
+                splitLines.add(visibleMessages.at(-1)!.content)
+                splitLines.end()
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyR") {
             // Regenerate response
@@ -1312,7 +1431,7 @@ const TextToSpeechDialog = () => {
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Output Device</h2>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
-            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { speak(null, 1) }}>Test text-to-speech</button>
+            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { useStore.getState().ttsQueue.speakText(null) }}>Test text-to-speech</button>
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
             <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as any }) }}>
                 <option value="off">Disabled</option>
@@ -1552,43 +1671,6 @@ const RegenerateResponse = () => {
         </div>
     }
     return <></>
-}
-
-const speak = async (content: string | null, beepVolume: number) => {
-    const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
-    switch (ttsBackend) {
-        case "off": {
-            break
-        } case "web-speech-api": {
-            if (window.speechSynthesis) {
-                speechSynthesis.cancel()
-                const utterance = new SpeechSynthesisUtterance(content ?? "Web Speech API")
-                utterance.lang = webSpeechAPILang
-                utterance.pitch = webSpeechAPIPitch
-                utterance.rate = webSpeechAPIRate
-                speechSynthesis.speak(utterance)
-            }
-            break
-        } case "pico2wave": {
-            await invoke("speak_pico2wave", { content: content ?? "pico2wave", lang: pico2waveVoice })
-            break
-        } case "azure": {
-            if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey || !azureTTSVoice) { return }
-            const ssml = `<speak version='1.0' xml:lang='${azureTTSLang}'><voice xml:lang='${azureTTSLang}' name='${azureTTSVoice}'>${(content ?? "Microsoft Speech Service Text-to-Speech API").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</voice></speak>`
-            await db.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, ssml.length])
-
-            const res = await invoke<[ok: boolean, body: string]>("speak_azure", {
-                region: azureTTSRegion,
-                resourceKey: azureTTSResourceKey,
-                ssml,
-                beepVolume,
-            })
-            if (!res[0]) { console.error(res[1]); return }
-            break
-        } default: {
-            ttsBackend satisfies never
-        }
-    }
 }
 
 /** The entry point. */
