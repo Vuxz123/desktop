@@ -14,6 +14,7 @@ https://github.com/chatgptui/desktop/releases
 | Move to the next thread | `Ctrl + Tab` |
 | Move to the previous thread | `Ctrl + Shift + Tab` |
 | Regenerate response | `Ctrl + Shift + R` |
+| Stop generating | `Ctrl + Shift + S` |
 | Send single-line message | `Enter` |
 | Send multi-line message | `Ctrl + Enter` |
 | Fold all assistant's responses | `Ctrl + K, 0` |
@@ -23,6 +24,7 @@ https://github.com/chatgptui/desktop/releases
 | Speak help | `Ctrl + H` |
 | Speak the text in the input box | `Ctrl + U` |
 | Speak the last response from the assistant | `Ctrl + R` |
+| Stop speaking | `Escape` |
 
 Use Command instead of Ctrl on Mac.
 

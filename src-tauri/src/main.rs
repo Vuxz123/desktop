@@ -5,7 +5,7 @@
 
 use rust_tokenizers::tokenizer::{Gpt2Tokenizer, Tokenizer, TruncationStrategy};
 use sqlx::{Connection, Row};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
@@ -50,7 +50,9 @@ fn main() {
             start_listening,
             stop_listening,
             start_chat_completion,
+            stop_all_chat_completions,
             get_chat_completion,
+            stop_audio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -261,6 +263,7 @@ lazy_static::lazy_static! {
     static ref INPUT_VOLUME: AtomicF32 = AtomicF32::new(0.0);
 
     static ref CHAT_COMPLETION_RESPONSE: Arc<Mutex<HashMap<u64, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref CHAT_COMPLETION_CANCELED: Arc<Mutex<HashSet<u64>>> = Arc::new(Mutex::new(HashSet::new()));
 }
 
 #[tauri::command]
@@ -344,6 +347,11 @@ fn stop_listening() {
 #[tauri::command]
 fn get_input_volume() -> f32 {
     INPUT_VOLUME.load(Ordering::SeqCst)
+}
+
+#[tauri::command]
+fn stop_audio() {
+    AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst);
 }
 
 async fn start_listening_inner(
@@ -493,6 +501,14 @@ fn handle_chat_completion_server_event(
     }
     Ok(())
 }
+
+#[tauri::command]
+fn stop_all_chat_completions() {
+    for id in CHAT_COMPLETION_RESPONSE.lock().unwrap().keys() {
+        CHAT_COMPLETION_CANCELED.lock().unwrap().insert(*id);
+    }
+}
+
 async fn start_chat_completion_inner(
     request_id: u64,
     openai_key: String,
@@ -525,6 +541,14 @@ async fn start_chat_completion_inner(
                 buf.push(value);
                 is_prev_char_newline = newline;
             }
+        }
+
+        if CHAT_COMPLETION_CANCELED
+            .lock()
+            .unwrap()
+            .contains(&request_id)
+        {
+            return Ok(());
         }
     }
     handle_chat_completion_server_event(request_id, &buf)?;

@@ -1,9 +1,9 @@
 [package]
 name = "app"
-version = "0.8.0"
+version = "0.9.0"
 description = "A Tauri App"
 authors = ["you"]
-license = ""
+license = "GPL v3"
 repository = ""
 default-run = "app"
 edition = "2021"

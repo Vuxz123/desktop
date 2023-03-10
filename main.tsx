@@ -106,7 +106,7 @@ const Message = (props: { depth: number }) => {
     const hasNextSibling = useStore((s) => getSiblingId(s) < (s.visibleMessages[props.depth - 1]?.children.length ?? 1) - 1)
     const [editing, setEditing] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
-    const waiting = useStore((s) => s.visibleMessages[props.depth]?.status === -1 && s.waiting.includes(s.visibleMessages[props.depth]!.id))
+    const waiting = useStore((s) => s.visibleMessages[props.depth]?.status === -1 && s.waitingAssistantsResponse.includes(s.visibleMessages[props.depth]!.id))
     const isFolded = useStore((s) => s.folded.has(s.visibleMessages[props.depth]?.id as number))
     const scrollIntoView = useStore((s) => s.scrollIntoView === s.visibleMessages[props.depth]?.id)
     const ref = useRef<HTMLDivElement>(null)
@@ -279,7 +279,7 @@ const loadConfig = (() => {
 })()
 
 type State = {
-    waiting: MessageId[]
+    waitingAssistantsResponse: MessageId[]
     threads: { id: MessageId, name: string | null }[]
     visibleMessages: (Message & { children: Message[] })[]
     search: string
@@ -291,7 +291,7 @@ type State = {
 }
 
 let useStore = create<State>()(() => ({
-    waiting: [],
+    waitingAssistantsResponse: [],
     threads: [],
     visibleMessages: [],
     password: "",
@@ -440,19 +440,19 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
 /** Generates an assistant's response and appends it to the thread. */
 const completeAndAppend = async (messages: readonly ({ id: number } & PartialMessage)[]): Promise<PartialMessage> => {
     const id = await appendMessage(messages.map((v) => v.id), { role: "assistant", content: "", status: -1 })
-    useStore.setState((s) => ({ waiting: [...s.waiting, id] }))
+    useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
     try {
         const newMessage = await complete(messages, async (content) => {
             await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
             reload([...messages.map((v) => v.id), id])
         })
-        await db.execute("UPDATE message SET role = ?, status = ?, content = ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
+        await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
         reload([...messages.map((v) => v.id), id])
         speak(newMessage.content + (newMessage.status === 1 ? ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.` : ""), 1).catch(console.error)
         useStore.setState({ scrollIntoView: id })
         return newMessage
     } finally {
-        useStore.setState((s) => ({ waiting: s.waiting.filter((v) => v !== id) }))
+        useStore.setState((s) => ({ waitingAssistantsResponse: s.waitingAssistantsResponse.filter((v) => v !== id) }))
     }
 }
 
@@ -648,7 +648,10 @@ const App = () => {
         }
         const speakIfAudioFeedbackIsEnabled = (content: string) => { if (useConfigStore.getState().audioFeedback) { speak(content, 0) } }
 
-        if (ctrlOrCmd(ev) && ev.code === "KeyH") {
+        if (ev.code === "Escape") {
+            ev.preventDefault()
+            invoke("stop_audio")
+        } else if (ctrlOrCmd(ev) && ev.code === "KeyH") {
             // Help
             ev.preventDefault()
             const ctrlStr = isMac ? "command" : "control"
@@ -658,6 +661,8 @@ const App = () => {
                 [`Focus the input box`, `${ctrlStr} plus L`],
                 [`Create a new thread`, `${ctrlStr} plus N`],
                 [`Speak the last response from the assistant`, `${ctrlStr} plus R`],
+                [`Stop generating`, `${ctrlStr} plus shift plus S`],
+                [`Stop speaking`, `Escape`],
                 [`Move to the next thread`, `${ctrlStr} plus tab`],
                 [`Move to the previous thread`, `${ctrlStr} plus shift plus tab`],
                 [`Regenerate response`, `${ctrlStr} plus shift plus R`],
@@ -665,7 +670,7 @@ const App = () => {
                 [`Fold all assistant's responses`, `${ctrlStr} plus K, then zero`],
                 [`Unfold all assistant's responses`, `${ctrlStr} plus K, then J`],
                 [`Show bookmarks`, `${ctrlStr} plus shift plus O`],
-                [`Start/Stop recording`, `${ctrlStr} plus shift plus V`],
+                [`Start or Stop recording`, `${ctrlStr} plus shift plus V`],
             ]
             speak(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "), 0)
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
@@ -674,6 +679,7 @@ const App = () => {
                 invoke("stop_listening")
             } else {
                 const startTime = Date.now()
+                invoke("stop_audio")
                 invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
                     .then((res) => {
                         db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
@@ -703,6 +709,10 @@ const App = () => {
             ev.preventDefault()
             reload([])
             focusInput()
+        } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyS") {
+            // Stop generating
+            ev.preventDefault()
+            invoke("stop_all_chat_completions")
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "KeyR") {
             // Speak the last response from the assistant
             ev.preventDefault()
@@ -1466,15 +1476,30 @@ const regenerateReponse = async () => {
 /** Regenerates an assistant's message. */
 const RegenerateResponse = () => {
     const reversed = useConfigStore((s) => !!s.reversedView)
-    const visible = useStore((s) => s.visibleMessages.length >= 2 && s.visibleMessages.at(-1)?.role === "assistant")
-    return visible ? <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={regenerateReponse}>
-        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
-            <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
-        </svg>
-        Regenerate response
-    </div> : <></>
+    const canRegenerateResponse = useStore((s) => s.visibleMessages.length >= 2 && s.visibleMessages.at(-1)?.role === "assistant")
+    const waitingAssistantsResponse = useStore((s) => s.waitingAssistantsResponse.includes(s.visibleMessages.at(-1)?.id as number))
+    if (waitingAssistantsResponse) {
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => {
+            invoke("stop_all_chat_completions")
+        }}>
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M5 5m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z"></path>
+            </svg>
+            Stop generating
+        </div>
+    }
+    if (canRegenerateResponse) {
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={regenerateReponse}>
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
+                <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
+            </svg>
+            Regenerate response
+        </div>
+    }
+    return <></>
 }
 
 const speak = async (content: string | null, beepVolume: number) => {
