@@ -122,7 +122,7 @@ const Message = (props: { depth: number }) => {
             <div class="max-w-3xl mx-auto relative p-6 pt-8">
                 {/* Role and toggle switches */}
                 <span class="text-zinc-600 absolute top-0 left-6 select-none cursor-default">
-                    <span class="text-zinc-500 select-none" onMouseDown={(ev) => ev.preventDefault()}>{role}</span>
+                    <span class="text-zinc-500 dark:text-zinc-300 select-none" onMouseDown={(ev) => ev.preventDefault()}>{role}</span>
                     {numSiblings > 1 && <>
                         <span class={"inline-block px-2 ml-2" + (hasPreviousSibling ? " cursor-pointer" : "")} onClick={() => {
                             if (!hasPreviousSibling) { return }

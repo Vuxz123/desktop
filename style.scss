@@ -13,15 +13,22 @@
     h6 { @apply font-semibold; }
     a { @apply font-bold underline; }
     table {
-        @apply w-full;
+        @apply w-full border-separate rounded border-spacing-0;
+        th, td { @apply border-zinc-300 dark:border-zinc-400; }
         th {
-            @apply rounded-lg text-left;
+            @apply text-left border-l border-t;
+            &:first-child { @apply rounded-tl; }
+            &:last-child { @apply rounded-tr border-r; }
         }
-        td, th {
-            @apply border border-zinc-300 px-4 py-1;
-        }
+        td, th { @apply px-4 py-1; }
         td {
-            @apply bg-zinc-50;
+            @apply bg-zinc-50 dark:bg-zinc-800 border-l border-t;
+            &:last-child { @apply border-r; }
+        }
+        tr:last-child td {
+            @apply border-b;
+            &:first-child { @apply rounded-bl; }
+            &:last-child { @apply rounded-br; }
         }
     }
 
