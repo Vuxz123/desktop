@@ -30,6 +30,7 @@ Use Command instead of Ctrl on Mac.
 See https://github.com/chatgptui/desktop/wiki/Building-from-Source
 
 # Related Projects
+- https://github.com/cogentapps/chat-with-gpt
 - https://github.com/Loeffeldude/my-chat-gpt
 - https://www.typingmind.com/
 - https://github.com/lencx/ChatGPT
