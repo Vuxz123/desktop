@@ -740,6 +740,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             // Stop generating
             ev.preventDefault()
             invoke("stop_all_chat_completions")
+            invoke("cancel_listening")
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "KeyR") {
             // Speak the last response from the assistant
             ev.preventDefault()
@@ -1141,7 +1142,13 @@ const InputVolumeIndicator = () => {
     }, [listening])
     if (!listening) { return <></> }
     return <div class="absolute top-[35%] left-0 right-0 mx-0 text-center z-50 pointer-events-none">
-        <div class="bg-white w-fit inline-block p-8 rounded-lg shadow-light dark:shadow-dark pointer-events-auto">
+        <div class="bg-white w-fit inline-block p-8 rounded-lg shadow-light dark:shadow-dark pointer-events-auto relative">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute right-3 top-3 cursor-pointer" width="25" height="25" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
+                onClick={() => { invoke("cancel_listening") }}>
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M18 6l-12 12"></path>
+                <path d="M6 6l12 12"></path>
+            </svg>
             <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline-block dark:stroke-zinc-200" width="110" height="110" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                 <path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z"></path>
@@ -1250,6 +1257,7 @@ const SpeechToTextDialog = () => {
             <ul>
                 <li>Start <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
                 <li>Stop <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
+                <li>Cancel <code class="ml-2">Ctrl (or Cmd) + Shift + S</code></li>
             </ul>
             <h3 class="font-semibold my-2">Language</h3>
             <input value={whisperLanguage} onChange={(ev) => { useConfigStore.setState({ whisperLanguage: ev.currentTarget.value }) }} class="mb-1 shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100" placeholder="en"></input>

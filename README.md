@@ -21,6 +21,7 @@ https://github.com/chatgptui/desktop/releases
 | Unfold all assistant's responses | `Ctrl + K, J` |
 | Show bookmarks | `Ctrl + Shift + O` |
 | Start/Stop recording | `Ctrl + Shift + V` |
+| Cancel recording | `Ctrl + Shift + S` |
 | Speak help | `Ctrl + H` |
 | Speak the text in the input box | `Ctrl + U` |
 | Speak the last response from the assistant | `Ctrl + R` |

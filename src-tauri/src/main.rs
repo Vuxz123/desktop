@@ -64,6 +64,7 @@ fn main() {
             get_input_volume,
             start_listening,
             stop_listening,
+            cancel_listening,
             start_chat_completion,
             stop_all_chat_completions,
             get_chat_completion,
@@ -353,10 +354,19 @@ async fn test_pico2wave() {
 }
 
 static RECORDING_COUNTER: AtomicI64 = AtomicI64::new(0);
+static RECORDING_CANCELED: AtomicI64 = AtomicI64::new(-1);
 
 #[tauri::command]
 fn stop_listening() {
     RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn cancel_listening() {
+    RECORDING_CANCELED.store(
+        RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst),
+        Ordering::SeqCst,
+    );
 }
 
 #[tauri::command]
@@ -378,6 +388,7 @@ async fn start_listening_inner(
 
     {
         let path = f.path().to_owned();
+        let precedence = RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
         tokio::task::spawn_blocking(move || {
             use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
             use cpal::SampleFormat;
@@ -443,12 +454,14 @@ async fn start_listening_inner(
             };
             stream.play().unwrap();
 
-            let precedence = RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
             while precedence == RECORDING_COUNTER.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(50)); // `stream does` not implement Send`
             }
         })
         .await?;
+        if precedence <= RECORDING_CANCELED.load(Ordering::SeqCst) {
+            return Ok("".to_owned());
+        }
     }
     INPUT_VOLUME.store(-1f32, Ordering::SeqCst);
 
