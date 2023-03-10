@@ -659,6 +659,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             .then((res) => {
                 db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
                 textareaRef.current!.value += res as string
+                autoFitTextareaHeight()
                 if (!useConfigStore.getState().editVoiceInputBeforeSending) {
                     send()
                 }
