@@ -56,7 +56,7 @@ const Markdown = (props: { content: string }) => {
                 // The README of react-markdown uses react-syntax-highlighter for syntax highlighting but it freezes the app for a whole second when loading
                 return <>
                     <div class="bg-gray-700 text-zinc-100 pb-1 pt-2 rounded-t flex">
-                        <div class="flex-1">{lang}</div>
+                        <div class="flex-1 pl-4">{lang}</div>
                         <CodeBlockCopyButton content={content} />
                     </div>
                     <code class={"rounded-b " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
@@ -245,6 +245,7 @@ const defaultConfigValues = {
     webSpeechAPILang: "en-US",
     webSpeechAPIPitch: 1,
     webSpeechAPIRate: 1,
+    reversedView: 0,
 } satisfies Record<string, string | number>
 
 const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -804,6 +805,8 @@ Browsing: disabled`, status: 0
     const [shouldDisplayAPIKeyInputOverride, setShouldDisplayAPIKeyInputOverride] = useState(false)
     const shouldDisplayAPIKeyInput = useStore((s) => s.threads.length === 0) || shouldDisplayAPIKeyInputOverride
     const threadName = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name ?? "New chat")
+    const reversed = useConfigStore((s) => !!s.reversedView)
+    const lastMessageRole = useStore((s) => s.visibleMessages.findLast((v) => v.role === "user" || v.role === "assistant")?.role)
 
     useEffect(() => {
         appWindow.setTitle(`ChatGPT: ${threadName}`)
@@ -915,6 +918,18 @@ Browsing: disabled`, status: 0
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
                         ev.preventDefault()
+                        document.querySelector<HTMLDialogElement>("#preferences")?.showModal()
+                    }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-settings inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"></path>
+                        <path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path>
+                    </svg>
+                    Preferences
+                </div>
+                <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
+                    onClick={(ev) => {
+                        ev.preventDefault()
                         open("https://github.com/chatgptui/desktop")
                     }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-question-mark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -925,31 +940,34 @@ Browsing: disabled`, status: 0
                     About this app
                 </div>
             </div>
-            <div class="flex flex-col h-[100vh] overflow-hidden flex-1 bg-white dark:bg-zinc-800 dark:text-zinc-100" id="main">
+            <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
+                <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
+                    {shouldDisplayAPIKeyInput && <>
+                        <input
+                            type="password"
+                            autocomplete="off"
+                            value={apiKey}
+                            onChange={(ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}
+                            class="my-4 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                            placeholder="OpenAI API Key"
+                            onInput={async (ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}></input>
+                        <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
+                    </>}
+                </div>
                 <div class="flex-1 overflow-y-auto">
-                    <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
+                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-zinc-50 dark:bg-zinc-800")}></div>}
+                    {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
                         {!shouldDisplayAPIKeyInput && <>
                             <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
                         </>}
-                        {shouldDisplayAPIKeyInput && <>
-                            <input
-                                type="password"
-                                autocomplete="off"
-                                value={apiKey}
-                                onChange={(ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}
-                                class="mt-4 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                                placeholder="OpenAI API Key"
-                                onInput={async (ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}></input>
-                            <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
-                        </>}
-                    </div>
-                    {Array(numMessages).fill(0).map((_, i) => <Message key={i} depth={i} />)}
+                    </div>}
+                    {(reversed ? (x: number[]) => x.reverse() : (x: number[]) => x)([...Array(numMessages).keys()]).map((i) => <Message key={i} depth={i} />)}
                     <div class="h-20"></div>
                 </div>
-                <div class="px-2 pt-4 pb-4 bg-white dark:bg-zinc-800 relative">
+                <div class={"px-2 " + (reversed ? "top-4 left-0 right-0 mx-auto text-center absolute max-w-3xl" : "pt-4 pb-4 relative bg-white dark:bg-zinc-800")}>
                     <RegenerateResponse />
                     <div class="leading-4 flex">
-                        <div class="shadow-light dark:shadow-dark rounded-lg dark:bg-zinc-700 relative flex-1">
+                        <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
                             <textarea
                                 ref={textareaRef}
                                 class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
@@ -991,11 +1009,27 @@ Browsing: disabled`, status: 0
         <BudgetDialog />
         <InputVolumeIndicator />
         <BookmarkDialog />
+        <PreferencesDialog />
         <dialog
             id="contextmenu"
             class="m-0 px-0 py-[0.15rem] absolute left-0 top-0 z-30 flex flex-col bg-zinc-100 dark:bg-zinc-800 outline-gray-200 dark:outline-zinc-600 shadow-lg whitespace-pre rounded-lg [&:not([open])]:hidden [&::backdrop]:bg-transparent"
             onClick={(ev) => { ev.currentTarget.close() }}></dialog>
     </>
+}
+
+const PreferencesDialog = () => {
+    const reversed = useConfigStore((s) => s.reversedView)
+    return <dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+        <div class="px-20 py-8 w-fit">
+            <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Preferences</h2>
+            Direction <select class="ml-2 px-2 text-zinc-600" value={reversed ? "reversed" : "normal"} onChange={(ev) => {
+                useConfigStore.setState({ reversedView: ev.currentTarget.value === "reversed" ? 1 : 0 })
+            }}>
+                <option value="normal">normal</option>
+                <option value="reversed">reversed</option>
+            </select>
+        </div>
+    </dialog>
 }
 
 const BookmarkDialog = () => {
@@ -1400,8 +1434,9 @@ const regenerateReponse = async () => {
 
 /** Regenerates an assistant's message. */
 const RegenerateResponse = () => {
+    const reversed = useConfigStore((s) => !!s.reversedView)
     const visible = useStore((s) => s.visibleMessages.length >= 2 && s.visibleMessages.at(-1)?.role === "assistant")
-    return visible ? <div class="border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto mb-2 text-center bottom-full text-sm" onClick={regenerateReponse}>
+    return visible ? <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={regenerateReponse}>
         <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
             <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
