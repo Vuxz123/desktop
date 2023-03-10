@@ -269,6 +269,7 @@ type State = {
     scrollIntoView: MessageId | null
     listening: boolean
     openUsageDialog: () => void
+    openBookmarkDialog: () => void
 }
 
 let useStore = create<State>()(() => ({
@@ -281,6 +282,7 @@ let useStore = create<State>()(() => ({
     scrollIntoView: null,
     listening: false,
     openUsageDialog: () => { },
+    openBookmarkDialog: () => { }
 }))
 
 // @ts-ignore
@@ -625,7 +627,7 @@ const App = () => {
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyO") {
             ev.preventDefault()
-            showBookmarks()
+            useStore.getState().openBookmarkDialog()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyU") {
             // Speak texts in the input box
             ev.preventDefault()
@@ -746,9 +748,6 @@ Browsing: disabled`, status: 0
     const [shouldDisplayAPIKeyInputOverride, setShouldDisplayAPIKeyInputOverride] = useState(false)
     const shouldDisplayAPIKeyInput = useStore((s) => s.threads.length === 0) || shouldDisplayAPIKeyInputOverride
     const threadName = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name ?? "New chat")
-    const showBookmarks = () => {
-        alert("TODO: bookmarks")
-    }
 
     return <>
         {!isSideBarOpen && <div title="Open side bar" class="absolute top-4 left-4 cursor-pointer z-40 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:text-zinc-200 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); setIsSideBarOpen((v) => !v) }}>
@@ -791,7 +790,7 @@ Browsing: disabled`, status: 0
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={async (ev) => {
                         ev.preventDefault()
-                        showBookmarks()
+                        useStore.getState().openBookmarkDialog()
                     }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -852,6 +851,18 @@ Browsing: disabled`, status: 0
                         <path d="M12 17l0 4"></path>
                     </svg>
                     Speech-to-text
+                </div>
+                <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
+                    onClick={(ev) => {
+                        ev.preventDefault()
+                        open("https://github.com/chatgptui/desktop")
+                    }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-question-mark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M8 8a3.5 3 0 0 1 3.5 -3h1a3.5 3 0 0 1 3.5 3a3 3 0 0 1 -2 3a3 4 0 0 0 -2 4"></path>
+                        <path d="M12 19l0 .01"></path>
+                    </svg>
+                    About this app
                 </div>
             </div>
             <div class="flex flex-col h-[100vh] overflow-hidden flex-1 bg-white dark:bg-zinc-800 dark:text-zinc-100" id="main">
@@ -919,11 +930,55 @@ Browsing: disabled`, status: 0
         <TextToSpeechDialog />
         <BudgetDialog />
         <InputVolumeIndicator />
+        <BookmarkDialog />
         <dialog
             id="contextmenu"
             class="m-0 px-0 py-[0.15rem] absolute left-0 top-0 z-30 flex flex-col bg-zinc-100 dark:bg-zinc-800 outline-gray-200 dark:outline-zinc-600 shadow-lg whitespace-pre rounded-lg [&:not([open])]:hidden"
             onClick={(ev) => { ev.currentTarget.close() }}></dialog>
     </>
+}
+
+const BookmarkDialog = () => {
+    type Bookmark = { id: MessageId, content: String, note: String, createdAt: string, modifiedAt: string }
+    const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
+    useEffect(() => {
+        useStore.setState({
+            openBookmarkDialog: () => {
+                db.select<Bookmark[]>("SELECT id, content, note, createdAt, modifiedAt FROM bookmark JOIN message ON message.id = bookmark.messageId ORDER BY createdAt DESC")
+                    .then((res) => { setBookmarks(res) })
+                document.querySelector<HTMLDialogElement>("#bookmark")!.showModal()
+            }
+        })
+    }, [])
+    return <dialog id="bookmark" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+        <div class="px-20 py-8 w-fit">
+            <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Bookmarks</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Content</th>
+                        {/* <th>Note</th> */}
+                        {/* <th>Modified at</th> */}
+                    </tr>
+                </thead>
+                <tbody>
+                    {bookmarks.map((b) => <tr class="cursor-pointer hover:bg-zinc-600"
+                        onClick={() => {
+                            findParents(b.id).then(async (res) => {
+                                await reload(res)
+                                useStore.setState({ scrollIntoView: res.at(-1)! })
+                            })
+                        }}>
+                        <td class="px-2 whitespace-nowrap">{b.createdAt}</td>
+                        <td class="px-2 whitespace-nowrap max-w-[40vw] overflow-x-scroll py-4">{b.content}</td>
+                        {/* <td class="px-2">{b.note}</td> */}
+                        {/* <td class="px-2 whitespace-nowrap">{b.modifiedAt}</td> */}
+                    </tr>)}
+                </tbody>
+            </table>
+        </div>
+    </dialog>
 }
 
 const InputVolumeIndicator = () => {
@@ -986,6 +1041,22 @@ const InputVolumeIndicator = () => {
         </div>
     </div>
 }
+
+const findParents = async (id: MessageId) => {
+    return (await db.select<{ id: number }[]>(`
+WITH RECURSIVE parents AS (
+    SELECT id, parent
+    FROM message
+    WHERE id = ?
+    UNION
+    SELECT message.id, message.parent
+    FROM parents
+    JOIN message ON message.id = parents.parent
+)
+SELECT id FROM parents
+`, [id])).reverse().map((v) => v.id)
+}
+
 const SearchResult = () => {
     const search = useStore((s) => s.search)
     const [messages, setMessages] = useState<{ id: number, content: string }[]>([])
@@ -1001,21 +1072,9 @@ const SearchResult = () => {
     return <>{messages.map((message) => {
         return <div class="pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative hover:bg-zinc-600"
             onClick={() => {
-                db.select<{ id: number }[]>(`
-WITH RECURSIVE parents AS (
-    SELECT id, parent
-    FROM message
-    WHERE id = ?
-    UNION
-    SELECT message.id, message.parent
-    FROM parents
-    JOIN message ON message.id = parents.parent
-)
-SELECT id FROM parents
-`, [message.id]).then(async (res) => {
-                    res.reverse()
-                    await reload(res.map((v) => v.id))
-                    useStore.setState({ scrollIntoView: res.at(-1)!.id })
+                findParents(message.id).then(async (res) => {
+                    await reload(res)
+                    useStore.setState({ scrollIntoView: res.at(-1)! })
                 })
             }}>
             {getHighlightedText(message.content.slice(message.content.toLowerCase().indexOf(search.toLowerCase())), search)}
