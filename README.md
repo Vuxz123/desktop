@@ -27,7 +27,7 @@ https://github.com/chatgptui/desktop/releases
 | Speak the last response from the assistant | `Ctrl + R` |
 | Stop speaking | `Escape` |
 
-Use Command instead of Ctrl on Mac.
+Use ⌘Command instead of Ctrl on Mac.
 
 # Command Line Options
 Execute `chat-gpt --help` in your terminal.
