@@ -1142,7 +1142,7 @@ const InputVolumeIndicator = () => {
     }, [listening])
     if (!listening) { return <></> }
     return <div class="absolute top-[35%] left-0 right-0 mx-0 text-center z-50 pointer-events-none">
-        <div class="bg-white w-fit inline-block p-8 rounded-lg shadow-light dark:shadow-dark pointer-events-auto relative">
+        <div class="bg-white dark:bg-zinc-700 w-fit inline-block p-8 rounded-lg shadow-light dark:shadow-dark pointer-events-auto relative">
             <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute right-3 top-3 cursor-pointer" width="25" height="25" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
                 onClick={() => { invoke("cancel_listening") }}>
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -1156,7 +1156,7 @@ const InputVolumeIndicator = () => {
                 <path d="M8 21l8 0"></path>
                 <path d="M12 17l0 4"></path>
             </svg>
-            {transcribing && <div>
+            {transcribing && <div class="dark:text-zinc-100">
                 Transcribing...
             </div>}
             {!transcribing && <div class="h-3 w-44 mx-auto mt-4">
