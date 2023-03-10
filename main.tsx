@@ -404,7 +404,14 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
             }
             return { role: "assistant", status: 1, content: err }
         } else {
-            return await dataFetchPromise
+            const result = await dataFetchPromise
+            Promise.all([
+                invoke<number>("count_tokens", { content: messagesFed.join(" ") }),
+                invoke<number>("count_tokens", { content: result.content })
+            ]).then(([promptTokens, completionTokens]) => {
+                db.execute("INSERT INTO textCompletionUsage (model, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?)", [model, promptTokens, completionTokens, promptTokens + completionTokens])
+            })
+            return result
         }
     } catch (err) {
         console.error(err)
