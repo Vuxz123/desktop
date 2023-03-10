@@ -7,6 +7,7 @@ import { create } from "zustand"
 import Database from "tauri-plugin-sql-api"
 import hljs from "highlight.js"
 import { invoke, clipboard } from "@tauri-apps/api"
+import { appWindow } from "@tauri-apps/api/window"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 // @ts-ignore
@@ -803,6 +804,10 @@ Browsing: disabled`, status: 0
     const [shouldDisplayAPIKeyInputOverride, setShouldDisplayAPIKeyInputOverride] = useState(false)
     const shouldDisplayAPIKeyInput = useStore((s) => s.threads.length === 0) || shouldDisplayAPIKeyInputOverride
     const threadName = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name ?? "New chat")
+
+    useEffect(() => {
+        appWindow.setTitle(`ChatGPT: ${threadName}`)
+    }, [threadName])
 
     return <>
         {!isSideBarOpen && <div title="Open side bar" class="absolute top-4 left-4 cursor-pointer z-40 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:text-zinc-200 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); setIsSideBarOpen((v) => !v) }}>
