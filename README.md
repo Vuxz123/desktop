@@ -28,6 +28,9 @@ https://github.com/chatgptui/desktop/releases
 
 Use Command instead of Ctrl on Mac.
 
+# Command Line Options
+Execute `chat-gpt --help` in your terminal.
+
 # Building from Source
 See https://github.com/chatgptui/desktop/wiki/Building-from-Source
 

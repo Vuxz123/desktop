@@ -58,6 +58,34 @@
         "timestampUrl": ""
       }
     },
+    "cli": {
+      "description": "",
+      "longDescription": "",
+      "beforeHelp": "",
+      "afterHelp": "",
+      "args": [
+        {
+          "name": "help",
+          "description": "Print help"
+        },
+        {
+          "name": "prompt",
+          "index": 1,
+          "takesValue": true,
+          "description": "Set a default prompt"
+        },
+        {
+          "name": "send",
+          "description": "Send the default prompt"
+        },
+        {
+          "name": "voice-input",
+          "description": "Start voice input"
+        }
+      ],
+      "subcommands": {
+      }
+    },
     "security": {
       "csp": null
     },

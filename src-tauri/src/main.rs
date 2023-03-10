@@ -4,6 +4,7 @@
 )]
 
 use rust_tokenizers::tokenizer::{Gpt2Tokenizer, Tokenizer, TruncationStrategy};
+use serde_json::Value;
 use sqlx::{Connection, Row};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
@@ -13,6 +14,7 @@ use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::api::cli::ArgData;
 use tauri::api::http::{Body, ClientBuilder, FormBody, FormPart, HttpRequestBuilder, ResponseType};
 use tempfile::NamedTempFile;
 
@@ -24,6 +26,19 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|context| {
+            match context.get_cli_matches() {
+                Ok(matches) => {
+                    if let Some(ArgData {
+                        value: Value::String(s),
+                        ..
+                    }) = matches.args.get("help")
+                    {
+                        println!("{}", s);
+                        std::process::exit(1);
+                    }
+                }
+                Err(_) => {}
+            }
             let app_data_dir_local = Some(
                 tauri::api::path::resolve_path(
                     &context.config(),

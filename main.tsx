@@ -10,6 +10,7 @@ import { invoke, clipboard } from "@tauri-apps/api"
 import { appWindow } from "@tauri-apps/api/window"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
+import { getMatches } from '@tauri-apps/api/cli'
 // @ts-ignore
 import createTablesSQL from "./create_tables.sql?raw"
 // @ts-ignore
@@ -599,15 +600,16 @@ const stopAudio = () => {
 }
 
 /** Renders the application. */
-const App = () => {
+const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const numMessages = useStore((s) => s.visibleMessages.length)
     const numThreads = useStore((s) => s.threads.length)
     const apiKey = useConfigStore((s) => s.APIKey)
 
     useEffect(() => {
-        console.timeEnd("load")
         focusInput()
+        if (props.send) { send() }
+        if (props.voiceInput) { startListening() }
     }, [])
 
     // undo/redo in textarea
@@ -648,6 +650,23 @@ const App = () => {
         focusInput()
         if (useConfigStore.getState().audioFeedback) { speak(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", 0) }
         document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({ behavior: "smooth" })
+    }
+
+    const startListening = () => {
+        const startTime = Date.now()
+        stopAudio()
+        invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
+            .then((res) => {
+                db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
+                textareaRef.current!.value += res as string
+                if (!useConfigStore.getState().editVoiceInputBeforeSending) {
+                    send()
+                }
+            })
+            .finally(() => {
+                useStore.setState({ listening: false })
+            })
+        useStore.setState({ listening: true })
     }
 
     const [isWaitingNextKeyPress, setIsWaitingNextKeyPress] = useState(false)
@@ -699,20 +718,7 @@ const App = () => {
             if (useStore.getState().listening) {
                 invoke("stop_listening")
             } else {
-                const startTime = Date.now()
-                stopAudio()
-                invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
-                    .then((res) => {
-                        db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
-                        textareaRef.current!.value += res as string
-                        if (!useConfigStore.getState().editVoiceInputBeforeSending) {
-                            send()
-                        }
-                    })
-                    .finally(() => {
-                        useStore.setState({ listening: false })
-                    })
-                useStore.setState({ listening: true })
+                startListening()
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyO") {
             ev.preventDefault()
@@ -1009,6 +1015,7 @@ Browsing: disabled`, status: 0
                                 class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
                                 placeholder="Explain quantum computing in simple terms"
                                 rows={1}
+                                defaultValue={props.prompt}
                                 onKeyDown={(ev) => {
                                     if (
                                         // Single line & Enter
@@ -1566,7 +1573,8 @@ const main = async () => {
     await db.execute(createTablesSQL)
     await reload([])
     await loadConfig()
-    render(<App />, document.body)
+    const args = (await getMatches()).args
+    render(<App prompt={typeof args.prompt?.value === "string" ? args.prompt.value : undefined} send={args.send?.occurrences === 1} voiceInput={args["voice-input"]?.occurrences === 1} />, document.body)
 }
 
 // Zoom in/out with ctrl(cmd)+plus/minus
