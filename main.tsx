@@ -247,6 +247,7 @@ const defaultConfigValues = {
     webSpeechAPIRate: 1,
     reversedView: 0,
     whisperLanguage: "",
+    editVoiceInputBeforeSending: 0,
 } satisfies Record<string, string | number>
 
 const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -677,6 +678,9 @@ const App = () => {
                     .then((res) => {
                         db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
                         textareaRef.current!.value += res as string
+                        if (!useConfigStore.getState().editVoiceInputBeforeSending) {
+                            send()
+                        }
                     })
                     .finally(() => {
                         useStore.setState({ listening: false })
@@ -1200,6 +1204,7 @@ type AzureVoiceInfo = {
 
 const SpeechToTextDialog = () => {
     const whisperLanguage = useConfigStore((s) => s.whisperLanguage)
+    const editVoiceInputBeforeSending = useConfigStore((s) => !!s.editVoiceInputBeforeSending)
     return <dialog id="speech-to-text" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Speech to text</h2>
@@ -1213,6 +1218,11 @@ const SpeechToTextDialog = () => {
             <p>
                 Specify <a class="cursor-pointer text-blue-300 border-b border-b-blue-300 whitespace-nowrap" onClick={() => { open("https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes") }}>ISO-639-1 language code</a> for improved performance.
             </p>
+            <h3 class="font-semibold my-2">Edit voice input before sending</h3>
+            <select class="text-zinc-600 px-2" value={editVoiceInputBeforeSending ? "enabled" : "disabled"} onChange={(ev) => { useConfigStore.setState({ editVoiceInputBeforeSending: ev.currentTarget.value === "enabled" ? 1 : 0 }) }}>
+                <option value="enabled">yes</option>
+                <option value="disabled">no</option>
+            </select>
         </div>
     </dialog>
 }
