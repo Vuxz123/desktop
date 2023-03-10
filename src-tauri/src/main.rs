@@ -70,8 +70,19 @@ fn main() {
             get_chat_completion,
             stop_audio,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
+                let audio_cache_db_path = unsafe { APP_DATA_DIR.clone() }
+                    .unwrap()
+                    .join("audioCache.sqlite");
+                if audio_cache_db_path.exists() {
+                    std::fs::remove_file(audio_cache_db_path).unwrap();
+                }
+            }
+            _ => {}
+        });
 }
 
 #[tauri::command]
