@@ -1264,7 +1264,7 @@ const SpeechToTextDialog = () => {
             <p>
                 Specify <a class="cursor-pointer text-blue-300 border-b border-b-blue-300 whitespace-nowrap" onClick={() => { open("https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes") }}>ISO-639-1 language code</a> for improved performance.
             </p>
-            <h3 class="font-semibold my-2">Edit voice input before sending</h3>
+            <h3 class="font-semibold my-2">Edit text before sending</h3>
             <select class="text-zinc-600 px-2" value={editVoiceInputBeforeSending ? "enabled" : "disabled"} onChange={(ev) => { useConfigStore.setState({ editVoiceInputBeforeSending: ev.currentTarget.value === "enabled" ? 1 : 0 }) }}>
                 <option value="enabled">yes</option>
                 <option value="disabled">no</option>
