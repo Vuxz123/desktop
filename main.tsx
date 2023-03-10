@@ -1366,7 +1366,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
                     <tr class="border-b border-b-zinc-300"><th>Model</th><th>Tokens</th><th>Price [USD]</th><th>Requests</th></tr>
                 </thead>
                 <tbody class="[&_td]:px-4">
-                    {totalTokens.map((v) => <tr><td class="text-left">{v.model}</td><td class="text-right">{v.sum}</td><td class="text-right">{(v.model === "gpt-3.5-turbo" ? (v.sum * chatGPTPricePerToken).toFixed(6) : "?")}</td><td class="text-right">{v.count}</td></tr>)}
+                    {totalTokens.map((v) => <tr class="select-text"><td class="text-left">{v.model}</td><td class="text-right">{v.sum}</td><td class="text-right">{(v.model === "gpt-3.5-turbo" ? (v.sum * chatGPTPricePerToken).toFixed(6) : "?")}</td><td class="text-right">{v.count}</td></tr>)}
                 </tbody>
             </table>
             <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">Text-to-speech Usage ({month})</h2>
@@ -1375,7 +1375,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
                     <tr class="border-b border-b-zinc-300"><th>Backend</th><th>Characters</th><th>F0 Free Tier (per month)</th><th>S0 Standard Tier [USD]</th></tr>
                 </thead>
                 <tbody class="[&_td]:px-4">
-                    <tr><td>Azure</td><td class="text-left">{totalTTSCharacters}</td><td class="text-right">{totalTTSCharacters} / 500000 ({(totalTTSCharacters / 500000 * 100).toFixed(1)}%)</td><td class="text-right">{(totalTTSCharacters / 1000000 * 16).toFixed(6)}</td></tr>
+                    <tr class="select-text"><td>Azure</td><td class="text-left">{totalTTSCharacters}</td><td class="text-right">{totalTTSCharacters} / 500000 ({(totalTTSCharacters / 500000 * 100).toFixed(1)}%)</td><td class="text-right">{(totalTTSCharacters / 1000000 * 16).toFixed(6)}</td></tr>
                 </tbody>
             </table>
             <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">Speech-to-text Usage ({month})</h2>
@@ -1384,7 +1384,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
                     <tr class="border-b border-b-zinc-300"><th>Model</th><th>Usage [min]</th><th>Price [USD]</th></tr>
                 </thead>
                 <tbody class="[&_td]:px-4">
-                    <tr><td>whisper-1</td><td>{totalSpeechToTextMinutes.toFixed(1)}</td><td>{(totalSpeechToTextMinutes * 0.006).toFixed(3)}</td></tr>
+                    <tr class="select-text"><td>whisper-1</td><td>{totalSpeechToTextMinutes.toFixed(1)}</td><td>{(totalSpeechToTextMinutes * 0.006).toFixed(3)}</td></tr>
                 </tbody>
             </table>
             <div class="mt-8 italic text-zinc-300">The pricing information provided by this software is an estimate, and the hard-coded prices can be out of date.</div>
