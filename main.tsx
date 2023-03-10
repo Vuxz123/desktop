@@ -172,6 +172,12 @@ const Message = (props: { depth: number }) => {
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M7 4v16l13 -8z"></path>
                     </svg>
+
+                    {/* TODO: stop */}
+                    {/* <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M5 5m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z"></path>
+                    </svg> */}
                 </span>
 
                 {/* Edit */}
@@ -585,6 +591,13 @@ const SearchBar = () => {
         placeholder="Search"></input>
 }
 
+const stopAudio = () => {
+    invoke("stop_audio")
+    if (window.speechSynthesis) {
+        try { window.speechSynthesis.cancel() } catch { }
+    }
+}
+
 /** Renders the application. */
 const App = () => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -593,6 +606,7 @@ const App = () => {
     const apiKey = useConfigStore((s) => s.APIKey)
 
     useEffect(() => {
+        console.timeEnd("load")
         focusInput()
     }, [])
 
@@ -657,7 +671,7 @@ const App = () => {
 
         if (ev.code === "Escape") {
             ev.preventDefault()
-            invoke("stop_audio")
+            stopAudio()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyH") {
             // Help
             ev.preventDefault()
@@ -686,7 +700,7 @@ const App = () => {
                 invoke("stop_listening")
             } else {
                 const startTime = Date.now()
-                invoke("stop_audio")
+                stopAudio()
                 invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
                     .then((res) => {
                         db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
