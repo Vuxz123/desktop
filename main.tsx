@@ -167,7 +167,7 @@ const Message = (props: { depth: number }) => {
                 </span>
 
                 {/* Play audio */}
-                <span title="Play audio" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
+                <span title="Play audio" class="text-zinc-600 absolute top-1 right-4 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { if (content) { speak(content, 1) } }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-play inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -182,7 +182,7 @@ const Message = (props: { depth: number }) => {
                 </span>
 
                 {/* Edit */}
-                {role === "user" && <span title="Edit content" class="text-zinc-600 absolute top-1 right-4 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
+                {role === "user" && <span title="Edit content" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { setEditing(true) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-edit inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -192,7 +192,18 @@ const Message = (props: { depth: number }) => {
                     </svg>
                 </span>}
 
-                {role === "assistant" && <span title="Bookmark" class="text-zinc-600 absolute top-1 right-4 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
+                {role === "assistant" && <span title="Copy response" class="text-zinc-600 absolute top-1 right-16 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
+                    onClick={() => {
+                        clipboard.writeText(useStore.getState().visibleMessages[props.depth]?.content ?? "")
+                    }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clipboard inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path>
+                        <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path>
+                    </svg>
+                </span>}
+
+                {role === "assistant" && <span title="Bookmark" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={async () => {
                         const s = useStore.getState()
                         if (bookmarked) {
