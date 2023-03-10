@@ -91,6 +91,7 @@ dependencies = [
  "dasp_sample",
  "hound",
  "lazy_static",
+ "reqwest",
  "rodio",
  "rust_tokenizers",
  "serde",

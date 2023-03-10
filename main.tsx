@@ -324,7 +324,7 @@ const appendMessage = async (parents: number[], message: Readonly<PartialMessage
 const chatGPTPricePerToken = 0.002 / 1000
 
 /** Generates an assistant's response. */
-const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[]): Promise<PartialMessage> => {
+const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[], handleStream?: (content: string) => Promise<void>): Promise<PartialMessage> => {
     try {
         const usage = await getTokenUsage()
         if (
@@ -346,46 +346,65 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         console.log(messagesFed)
 
         const model = "gpt-3.5-turbo"
-        const res = await fetch<
-            | {
-                error: {
-                    message: string
-                }
-            }
-            | {
-                usage: {
-                    prompt_tokens: number
-                    completion_tokens: number
-                    total_tokens: number
-                }
-                choices: {
-                    message: {
-                        role: "assistant"
-                        content: string
+        let done = false
+        let err: string | null
+        const requestId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+        const dataFetchPromise = new Promise<PartialMessage>((resolve, reject) => {
+            const result: PartialMessage = { content: "", role: "assistant", status: 0 }
+            const loop = async () => {
+                const done2 = done
+                try {
+                    for (const v of await invoke<string[]>("get_chat_completion", { requestId })) {
+                        let partial: {
+                            choices: {
+                                delta?: {
+                                    role?: "assistant"
+                                    content?: string
+                                }
+                                index?: number
+                                finish_reason?: string | null
+                            }[]
+                            created?: number
+                            id?: string
+                            model?: string
+                            object?: string
+                        }
+                        try { partial = JSON.parse(v) } catch (err) {
+                            throw new Error(`Parse error: ${v}`)
+                        }
+                        if (partial.choices[0]?.delta?.content) {
+                            result.content += partial.choices[0].delta.content
+                        }
                     }
-                }[]
-                finish_reason: "stop"
+                    if (!err) {
+                        await handleStream?.(result.content)
+                    }
+                } catch (err) {
+                    reject(err)
+                }
+                if (done2) { resolve(result); return }
+                setTimeout(loop, 50)
             }
-        >("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${useConfigStore.getState().APIKey}` },
-            body: Body.json({ model, messages: messagesFed }),
+            loop()
         })
-        if (!res.ok) {
-            if ("error" in res.data) {
-                return { role: "assistant", status: 1, content: res.data.error.message }
-            } else {
-                return { role: "assistant", status: 1, content: `Unexpected response: ${JSON.stringify(res.data)}` }
+        try {
+            err = await invoke<string | null>("start_chat_completion", {
+                requestId,
+                openaiKey: useConfigStore.getState().APIKey,
+                body: JSON.stringify({ model, messages: messagesFed, stream: true }),
+            })
+        } finally {
+            done = true
+        }
+        if (err) {
+            let json: unknown = null
+            try { json = JSON.parse(err) } catch { }
+            if (typeof json === "object" && json !== null && "error" in json && typeof json.error === "object" && json.error !== null && "message" in json.error && typeof json.error.message === "string") {
+                return { role: "assistant", status: 1, content: ("type" in json.error ? json.error.type + ": " : "") + json.error.message }
             }
+            return { role: "assistant", status: 1, content: err }
         } else {
-            if ("choices" in res.data && res.data.choices[0]?.message.role === "assistant") {
-                console.log(`${res.data.usage.total_tokens} tokens, $${res.data.usage.total_tokens * chatGPTPricePerToken}`)
-                await db.execute("INSERT INTO textCompletionUsage (model, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?)", [model, res.data.usage.prompt_tokens, res.data.usage.completion_tokens, res.data.usage.total_tokens])
-                const content = res.data.choices[0]?.message.content
-                return { role: "assistant", content, status: 0 }
-            } else {
-                return { role: "assistant", status: 1, content: `Unexpected response: ${JSON.stringify(res.data)}` }
-            }
+            return await dataFetchPromise
         }
     } catch (err) {
         console.error(err)
@@ -398,7 +417,10 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
     const id = await appendMessage(messages.map((v) => v.id), { role: "assistant", content: "", status: -1 })
     useStore.setState((s) => ({ waiting: [...s.waiting, id] }))
     try {
-        const newMessage = await complete(messages)
+        const newMessage = await complete(messages, async (content) => {
+            await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
+            reload([...messages.map((v) => v.id), id])
+        })
         await db.execute("UPDATE message SET role = ?, status = ?, content = ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
         reload([...messages.map((v) => v.id), id])
         speak(newMessage.content + (newMessage.status === 1 ? ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.` : ""), 1).catch(console.error)

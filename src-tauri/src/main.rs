@@ -5,13 +5,13 @@
 
 use rust_tokenizers::tokenizer::{Gpt2Tokenizer, Tokenizer, TruncationStrategy};
 use sqlx::{Connection, Row};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::mpsc::TryRecvError;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::api::http::{Body, ClientBuilder, FormBody, FormPart, HttpRequestBuilder, ResponseType};
 use tempfile::NamedTempFile;
@@ -49,6 +49,8 @@ fn main() {
             get_input_volume,
             start_listening,
             stop_listening,
+            start_chat_completion,
+            get_chat_completion,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -257,6 +259,8 @@ lazy_static::lazy_static! {
     /// [0, infty] -> volume
     /// -1 -> transcribing
     static ref INPUT_VOLUME: AtomicF32 = AtomicF32::new(0.0);
+
+    static ref CHAT_COMPLETION_RESPONSE: Arc<Mutex<HashMap<u64, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[tauri::command]
@@ -468,4 +472,78 @@ async fn start_listening_inner(openai_key: &str) -> Result<String, Box<dyn std::
 #[tauri::command]
 async fn start_listening(openai_key: String) -> String {
     start_listening_inner(&openai_key).await.unwrap() // todo: error handling
+}
+
+fn handle_chat_completion_server_event(
+    request_id: u64,
+    buf: &[u8],
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !buf.starts_with(b"data: [DONE]") && buf.starts_with(b"data: ") {
+        CHAT_COMPLETION_RESPONSE
+            .lock()?
+            .entry(request_id)
+            .or_insert(vec![])
+            .push(String::from_utf8_lossy(&buf[b"data: ".len()..]).into());
+    }
+    Ok(())
+}
+async fn start_chat_completion_inner(
+    request_id: u64,
+    openai_key: String,
+    body: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+    let mut res = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {openai_key}"))
+        .body(body)
+        .send()
+        .await?;
+    let mut buf = Vec::<u8>::new();
+    let mut is_prev_char_newline = false;
+    if res.status() != 200 {
+        let text = res.text().await?;
+        println!("err: {}", text);
+        return Err(text.into());
+    }
+    while let Some(chunk) = res.chunk().await? {
+        for value in chunk {
+            // split with "\n\n"
+            let newline = value == '\n' as u8;
+            if newline && is_prev_char_newline {
+                is_prev_char_newline = false;
+                handle_chat_completion_server_event(request_id, &buf)?;
+                buf.clear();
+            } else {
+                buf.push(value);
+                is_prev_char_newline = newline;
+            }
+        }
+    }
+    handle_chat_completion_server_event(request_id, &buf)?;
+    buf.clear();
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_chat_completion(
+    request_id: u64,
+    openai_key: String,
+    body: String,
+) -> Option<String> {
+    if let Err(err) = start_chat_completion_inner(request_id, openai_key, body).await {
+        Some(err.to_string())
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+async fn get_chat_completion(request_id: u64) -> Vec<String> {
+    let mut stream = CHAT_COMPLETION_RESPONSE.lock().unwrap();
+    let vec = stream.entry(request_id).or_default();
+    let result = vec.clone();
+    vec.clear();
+    result
 }
