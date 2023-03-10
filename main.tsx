@@ -9,6 +9,12 @@ import hljs from "highlight.js"
 import { invoke, clipboard } from "@tauri-apps/api"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
+// @ts-ignore
+import createTablesSQL from "./create_tables.sql?raw"
+// @ts-ignore
+import getTokenUsageSQL from "./get_token_usage.sql?raw"
+// @ts-ignore
+import findParentsSQL from "./find_parents.sql?raw"
 
 /** Database connection. */
 let db: Database
@@ -1091,18 +1097,7 @@ const InputVolumeIndicator = () => {
 }
 
 const findParents = async (id: MessageId) => {
-    return (await db.select<{ id: number }[]>(`
-WITH RECURSIVE parents AS (
-    SELECT id, parent
-    FROM message
-    WHERE id = ?
-    UNION
-    SELECT message.id, message.parent
-    FROM parents
-    JOIN message ON message.id = parents.parent
-)
-SELECT id FROM parents
-`, [id])).reverse().map((v) => v.id)
+    return (await db.select<{ id: number }[]>(findParentsSQL, [id])).reverse().map((v) => v.id)
 }
 
 const SearchResult = () => {
@@ -1306,15 +1301,7 @@ const TextToSpeechDialog = () => {
     </dialog>
 }
 
-const getTokenUsage = (now = new Date()) => db.select<{ model: string, sum: number, count: number }[]>(`\
-SELECT
-    model,
-    coalesce(sum(total_tokens), 0) as sum,
-    coalesce(count(*), 0) as count
-FROM textCompletionUsage
-WHERE date(timestamp, 'start of month') = date(?, 'start of month')
-GROUP BY model
-ORDER BY count DESC`, [now.toISOString()])
+const getTokenUsage = (now = new Date()) => db.select<{ model: string, sum: number, count: number }[]>(getTokenUsageSQL, [now.toISOString()])
 
 const BudgetDialog = () => {
     const [totalTokens, setTotalTokens] = useState<{ model: string, sum: number, count: number }[]>([])
@@ -1458,69 +1445,7 @@ const speak = async (content: string | null, beepVolume: number) => {
 /** The entry point. */
 const main = async () => {
     db = await Database.load("sqlite:chatgpt_tauri.db")
-    //     await db.execute(`
-    // DROP TABLE IF EXISTS message;
-    // DROP TABLE IF EXISTS threadName;
-    // DROP TRIGGER IF EXISTS trigger_message_update;
-    // DROP TABLE IF EXISTS textCompletionUsage;
-    // DROP TABLE IF EXISTS textToSpeechUsage;
-    // `)
-    await db.execute(`
-CREATE TABLE IF NOT EXISTS config (
-    key TEXT NOT NULL PRIMARY KEY,
-    value ANY
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS message (
-    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    parent INTEGER REFERENCES message(id) ON DELETE CASCADE,
-    role TEXT NOT NULL,
-    status INTEGER NOT NULL,
-    content TEXT NOT NULL,
-    parentsFed INTEGER,  -- NULL = fed everything
-    createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    modifiedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS threadName (
-    messageId INTEGER NOT NULL PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
-    name TEXT NOT NULL
-) STRICT;
-
-CREATE TRIGGER IF NOT EXISTS trigger_message_update UPDATE OF role, status, content ON message
-BEGIN
-    UPDATE message SET modifiedAt = CURRENT_TIMESTAMP WHERE id = NEW.id;
-END;
-
-CREATE TABLE IF NOT EXISTS textCompletionUsage (
-    model TEXT NOT NULL,
-    prompt_tokens INTEGER NOT NULL,
-    completion_tokens INTEGER NOT NULL,
-    total_tokens INTEGER NOT NULL,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS textToSpeechUsage (
-    region TEXT NOT NULL,
-    numCharacters INTEGER NOT NULL,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS speechToTextUsage (
-    model TEXT NOT NULL,
-    durationMs INTEGER NOT NULL,
-    timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS bookmark (
-    messageId INTEGER NOT NULL PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
-    note TEXT NOT NULL
-) STRICT;
-
-INSERT OR IGNORE INTO config VALUES ('budget', 1.0);
-INSERT OR IGNORE INTO config VALUES ('maxCostPerMessage', 0.015);
-`)
-
+    await db.execute(createTablesSQL)
     await reload([])
     await loadConfig()
     render(<App />, document.body)
