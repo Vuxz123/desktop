@@ -416,6 +416,17 @@ const autoName = async (messages: readonly (Pick<PartialMessage, "role" | "conte
         { role: "system", content: "What is the topic of the thread above? Answer using only a few words, and refrain from adding any additional comments beyond the topic name." },
     ])
     if (!res.status) {
+        let m: RegExpExecArray | null
+        if ((m = /^[^"]*topic[^"]*"([^"]+)"[^"]*$/i.exec(res.content)) !== null) {
+            // Topic: "test", The topic is "test".
+            res.content = m[1]!
+        } else if ((m = /^topic:\s*(.+)$/i.exec(res.content)) !== null) {
+            // Topic: test
+            res.content = m[1]!
+        } else if ((m = /^"(.+)"$/i.exec(res.content)) !== null) {
+            // "test"
+            res.content = m[1]!
+        }
         await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [root, res.content])
         reload(useStore.getState().visibleMessages.map((v) => v.id))
         return
