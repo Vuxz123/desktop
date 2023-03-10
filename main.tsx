@@ -569,7 +569,8 @@ const SearchBar = () => {
     const value = useStore((s) => s.search)
     return <input class="w-full pl-8 py-2 bg-zinc-700 my-2"
         value={value}
-        onChange={(ev) => useStore.setState({ search: ev.currentTarget.value })}
+        onKeyDown={(ev) => { if (ev.code === "Enter") { useStore.setState({ search: ev.currentTarget.value }) } }}
+        onBlur={(ev) => useStore.setState({ search: ev.currentTarget.value })}
         placeholder="Search"></input>
 }
 
@@ -1113,7 +1114,7 @@ const SearchResult = () => {
         })()
     }, [search])
     return <>{messages.map((message) => {
-        return <div class="pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative hover:bg-zinc-600"
+        return <div key={message.id} class="pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative hover:bg-zinc-600"
             onClick={() => {
                 findParents(message.id).then(async (res) => {
                     await reload(res)
