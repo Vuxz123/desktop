@@ -460,7 +460,11 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
             await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
             reload([...messages.map((v) => v.id), id])
         })
-        await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
+        if (newMessage.status === 1) {
+            await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
+        } else {
+            await db.execute("UPDATE message SET role = ?, status = ? WHERE id = ?", [newMessage.role, newMessage.status, id])
+        }
         reload([...messages.map((v) => v.id), id])
         speak(newMessage.content + (newMessage.status === 1 ? ` Press ${isMac ? "command" : "control"} plus shift plus R to retry.` : ""), 1).catch(console.error)
         useStore.setState({ scrollIntoView: id })
