@@ -173,21 +173,23 @@ async fn azure_text_to_speech_request(
 
     let mut conn = connect_db().await?;
 
-    if let Some(message_id) = message_id {
-        sqlx::query(
-            "INSERT OR REPLACE INTO messageTTSCache (messageId, ssml, audio) VALUES (?, ?, ?)",
-        )
-        .bind(message_id)
-        .bind(ssml)
-        .bind(data.clone())
-        .execute(&mut conn)
-        .await?;
-    } else {
-        sqlx::query("INSERT OR REPLACE INTO systemTTSCache (ssml, audio) VALUES (?, ?)")
+    if !no_cache {
+        if let Some(message_id) = message_id {
+            sqlx::query(
+                "INSERT OR REPLACE INTO messageTTSCache (messageId, ssml, audio) VALUES (?, ?, ?)",
+            )
+            .bind(message_id)
             .bind(ssml)
             .bind(data.clone())
             .execute(&mut conn)
             .await?;
+        } else {
+            sqlx::query("INSERT OR REPLACE INTO systemTTSCache (ssml, audio) VALUES (?, ?)")
+                .bind(ssml)
+                .bind(data.clone())
+                .execute(&mut conn)
+                .await?;
+        }
     }
 
     Ok(data)
