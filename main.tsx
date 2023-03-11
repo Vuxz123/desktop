@@ -399,6 +399,7 @@ const defaultConfigValues = {
     reversedView: 0,
     whisperLanguage: "",
     editVoiceInputBeforeSending: 0,
+    theme: "automatic" as "automatic" | "light" | "dark"
 } satisfies Record<string, string | number>
 
 const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -1216,15 +1217,33 @@ Browsing: disabled`, status: 0
 
 const PreferencesDialog = () => {
     const reversed = useConfigStore((s) => s.reversedView)
+    const theme = useConfigStore((s) => s.theme)
     return <dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Preferences</h2>
-            Direction <select class="ml-2 px-2 text-zinc-600" value={reversed ? "reversed" : "normal"} onChange={(ev) => {
-                useConfigStore.setState({ reversedView: ev.currentTarget.value === "reversed" ? 1 : 0 })
-            }}>
-                <option value="normal">normal</option>
-                <option value="reversed">reversed</option>
-            </select>
+            <table>
+                <tbody>
+                    <tr>
+                        <td>Theme</td>
+                        <td><select class="ml-2 px-2 text-zinc-600" value={theme} onChange={(ev) => {
+                            useConfigStore.setState({ theme: ev.currentTarget.value as any })
+                        }}>
+                            <option value="automatic">automatic</option>
+                            <option value="light">light</option>
+                            <option value="dark">dark</option>
+                        </select></td>
+                    </tr>
+                    <tr>
+                        <td>Direction</td>
+                        <td><select class="ml-2 px-2 text-zinc-600" value={reversed ? "reversed" : "normal"} onChange={(ev) => {
+                            useConfigStore.setState({ reversedView: ev.currentTarget.value === "reversed" ? 1 : 0 })
+                        }}>
+                            <option value="normal">normal</option>
+                            <option value="reversed">reversed</option>
+                        </select></td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </dialog>
 }
@@ -1696,6 +1715,20 @@ const main = async () => {
     await db.execute(createTablesSQL)
     await reload([])
     await loadConfig()
+
+    // Theme
+    const applyTheme = () => {
+        const theme = useConfigStore.getState().theme
+        if (theme === "dark" || theme === "automatic" && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add("dark")
+        } else {
+            document.documentElement.classList.remove("dark")
+        }
+    }
+    applyTheme()
+    useConfigStore.subscribe((state, prev) => { if (state.theme !== prev.theme) { applyTheme() } })
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener("change", () => { applyTheme() })
+
     const args = (await getMatches()).args
     render(<App prompt={typeof args.prompt?.value === "string" ? args.prompt.value : undefined} send={args.send?.occurrences === 1} voiceInput={args["voice-input"]?.occurrences === 1} />, document.body)
 }
