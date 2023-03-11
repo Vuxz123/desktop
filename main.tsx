@@ -1168,6 +1168,7 @@ Browsing: disabled`, status: 0
                 </div>
             </div>
             <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
+                {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
                 <div class="flex-1 overflow-y-auto">
                     {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-zinc-50 dark:bg-zinc-800")}></div>}
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
@@ -1218,7 +1219,6 @@ Browsing: disabled`, status: 0
                 </div>
             </div>
         </div>
-        {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
         <SpeechToTextDialog />
         <TextToSpeechDialog />
         <BudgetDialog />
@@ -1238,51 +1238,54 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
     const openaiService = useConfigStore((s) => s.openaiService)
     const azureEndpoint = useConfigStore((s) => s.azureEndpoint)
     const azureApiKeyAuthentication = useConfigStore((s) => s.azureApiKeyAuthentication)
-    return <div class={"fixed left-0 right-0 top-40 z-40 text-center" + (isSideBarOpen ? "" : " px-16")}>
-        <p class="dark:text-zinc-100 mb-2">
-            <select value={openaiService} onChange={(ev) => { useConfigStore.setState({ openaiService: ev.currentTarget.value as any }) }} class="ml-2 px-2 text-zinc-600">
-                <option value="openai">OpenAI API</option>
-                <option value="azure">Azure OpenAI Service</option>
-            </select>
-        </p>
-        {openaiService === "openai" && <>
-            <p>
-                <input
-                    type="password"
-                    autocomplete="off"
-                    value={apiKey}
-                    onChange={(ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}
-                    class="mb-2 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                    placeholder="OpenAI API Key"></input>
-            </p>
-            <p>
-                <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
-            </p>
-        </>}
-        {openaiService === "azure" && <>
-            <p>
-                <input
-                    autocomplete="off"
-                    value={azureEndpoint}
-                    onChange={(ev) => { useConfigStore.setState({ azureEndpoint: ev.currentTarget.value }) }}
-                    class="mb-2 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                    placeholder="endpoint"></input>
-            </p>
-            <p>
-                <select value={azureApiKeyAuthentication ? "api-key" : "active-directory"} onChange={(ev) => { useConfigStore.setState({ azureApiKeyAuthentication: ev.currentTarget.value === "api-key" ? 1 : 0 }) }} class="ml-2 px-2 text-zinc-600">
-                    <option value="api-key">API key</option>
-                    <option value="active-directory">Azure Active Directory token</option>
+    const hasMessage = useStore((s) => s.visibleMessages.length > 0)
+    return <div class={"absolute rounded-lg top-32 left-0 right-0 z-50 text-center w-fit max-w-full m-auto overflow-auto" + (hasMessage ? " bg-white dark:bg-black bg-opacity-40 dark:bg-opacity-25 backdrop-blur shadow-light dark:shadow-dark" : "") + (isSideBarOpen ? "" : " px-16")}>
+        <div class="p-8">
+            <p class="dark:text-zinc-100 mb-2">
+                <select value={openaiService} onChange={(ev) => { useConfigStore.setState({ openaiService: ev.currentTarget.value as any }) }} class="ml-2 px-2 text-zinc-600">
+                    <option value="openai">OpenAI API</option>
+                    <option value="azure">Azure OpenAI Service</option>
                 </select>
-                <input
-                    type="password"
-                    autocomplete="off"
-                    value={azureAPIKey}
-                    onChange={(ev) => { useConfigStore.setState({ azureAPIKey: ev.currentTarget.value }) }}
-                    class="mb-2 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                    placeholder="secret key"></input>
             </p>
-            <p class="italic">Untested feature: <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>If this does not work, open an issue on GitHub.</a></p>
-        </>}
+            {openaiService === "openai" && <>
+                <p>
+                    <input
+                        type="password"
+                        autocomplete="off"
+                        value={apiKey}
+                        onChange={(ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}
+                        class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                        placeholder="OpenAI API Key"></input>
+                </p>
+                <p>
+                    <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
+                </p>
+            </>}
+            {openaiService === "azure" && <>
+                <p>
+                    <input
+                        autocomplete="off"
+                        value={azureEndpoint}
+                        onChange={(ev) => { useConfigStore.setState({ azureEndpoint: ev.currentTarget.value }) }}
+                        class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                        placeholder="endpoint"></input>
+                </p>
+                <p>
+                    <select value={azureApiKeyAuthentication ? "api-key" : "active-directory"} onChange={(ev) => { useConfigStore.setState({ azureApiKeyAuthentication: ev.currentTarget.value === "api-key" ? 1 : 0 }) }} class="ml-2 px-2 text-zinc-600">
+                        <option value="api-key">API key</option>
+                        <option value="active-directory">Azure Active Directory token</option>
+                    </select>
+                    <input
+                        type="password"
+                        autocomplete="off"
+                        value={azureAPIKey}
+                        onChange={(ev) => { useConfigStore.setState({ azureAPIKey: ev.currentTarget.value }) }}
+                        class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                        placeholder="secret key"></input>
+                </p>
+                <p class="italic">Untested feature: <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>If this does not work, open an issue on GitHub.</a></p>
+            </>}
+        </div>
     </div>
 }
 
