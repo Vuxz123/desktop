@@ -1389,7 +1389,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                                 <textarea
                                     id="userPromptTextarea"
                                     ref={textareaRef}
-                                    class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
+                                    class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 pl-4 pr-12 resize-none bg-transparent focus-within:outline-none"
                                     placeholder="Explain quantum computing in simple terms"
                                     rows={1}
                                     defaultValue={props.prompt}
