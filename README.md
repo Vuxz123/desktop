@@ -26,6 +26,8 @@ https://github.com/chatgptui/desktop/releases
 | Speak the text in the input box | `Ctrl + U` |
 | Speak the last response from the assistant | `Ctrl + R` |
 | Stop speaking | `Escape` |
+| Zoom in | `Ctrl + "+"` |
+| Zoom out | `Ctrl + "-"` |
 
 Use ⌘Command instead of Ctrl on Mac.
 
