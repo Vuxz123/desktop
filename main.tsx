@@ -1030,6 +1030,9 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             ev.preventDefault()
             invoke("stop_all_chat_completions")
             invoke("cancel_listening")
+        } else if (ctrlOrCmd(ev) && ev.key === ",") {
+            ev.preventDefault()
+            document.querySelector<HTMLDialogElement>("#preferences")?.showModal()
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "KeyR") {
             // Speak the last response from the assistant
             ev.preventDefault()
