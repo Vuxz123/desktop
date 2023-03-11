@@ -387,7 +387,7 @@ const defaultConfigValues = {
     azureApiKeyAuthentication: 1,
     azureAPIKey: "",
     azureEndpoint: "",
-    openaiService: "openai" as "openai" | "azure",
+    openaiService: "openai" as "openai" | "openai-proxy" | "azure",
     ttsBackend: (window.speechSynthesis ? "web-speech-api" : "off") as "off" | "pico2wave" | "web-speech-api" | "azure",
     azureTTSRegion: "",
     azureTTSResourceKey: "",
@@ -405,6 +405,8 @@ const defaultConfigValues = {
     editVoiceInputBeforeSending: 0,
     theme: "automatic" as "automatic" | "light" | "dark",
     sidebar: "automatic" as "automatic" | "hide" | "show",
+    openaiProxyAPIKey: "",
+    openaiProxyUrl: "",
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -572,7 +574,7 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
             loop()
         })
         try {
-            const { APIKey, openaiService, azureEndpoint, azureApiKeyAuthentication, azureAPIKey } = useConfigStore.getState()
+            const { APIKey, openaiService, azureEndpoint, azureApiKeyAuthentication, azureAPIKey, openaiProxyAPIKey, openaiProxyUrl } = useConfigStore.getState()
             if (openaiService === "azure") {
                 err = await invoke<string | null>("start_chat_completion", {
                     requestId,
@@ -584,6 +586,18 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
                     }),
                     endpoint: azureEndpoint,
                     apiKeyAuthentication: !!azureApiKeyAuthentication,
+                })
+            } else if (openaiService === "openai-proxy") {
+                err = await invoke<string | null>("start_chat_completion", {
+                    requestId,
+                    secretKey: openaiProxyAPIKey,
+                    body: JSON.stringify({
+                        model,
+                        messages: messagesFed,
+                        stream: true,
+                    }),
+                    endpoint: openaiProxyUrl,
+                    apiKeyAuthentication: false,
                 })
             } else {  // openai
                 err = await invoke<string | null>("start_chat_completion", {
@@ -1252,11 +1266,15 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
     const azureEndpoint = useConfigStore((s) => s.azureEndpoint)
     const azureApiKeyAuthentication = useConfigStore((s) => s.azureApiKeyAuthentication)
     const hasMessage = useStore((s) => s.visibleMessages.length > 0)
+    const openaiProxyAPIKey = useConfigStore((s) => s.openaiProxyAPIKey)
+    const openaiProxyUrl = useConfigStore((s) => s.openaiProxyUrl)
+
     return <div class={"absolute rounded-lg top-32 left-0 right-0 z-50 text-center w-fit max-w-full m-auto overflow-auto" + (hasMessage ? " bg-white dark:bg-black bg-opacity-40 dark:bg-opacity-25 backdrop-blur shadow-light dark:shadow-dark" : "") + (isSideBarOpen ? "" : " px-16")}>
         <div class="p-8">
             <p class="dark:text-zinc-100 mb-2">
                 <select value={openaiService} onChange={(ev) => { useConfigStore.setState({ openaiService: ev.currentTarget.value as any }) }} class="ml-2 px-2 text-zinc-600">
                     <option value="openai">OpenAI API</option>
+                    <option value="openai-proxy">OpenAI API (custom endpoint)</option>
                     <option value="azure">Azure OpenAI Service</option>
                 </select>
             </p>
@@ -1274,29 +1292,79 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
                     <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
                 </p>
             </>}
+            {openaiService === "openai-proxy" && <>
+                <table>
+                    <tbody class="text-left [&_td]:px-2">
+                        <tr>
+                            <td>OpenAI API key</td>
+                            <td><input
+                                type="password"
+                                autocomplete="off"
+                                value={openaiProxyAPIKey}
+                                onChange={(ev) => { useConfigStore.setState({ openaiProxyAPIKey: ev.currentTarget.value }) }}
+                                class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                                placeholder="sk-..."></input></td>
+                        </tr>
+                        <tr>
+                            <td>Endpoint</td>
+                            <td><input
+                                autocomplete="off"
+                                value={openaiProxyUrl}
+                                onChange={(ev) => { useConfigStore.setState({ openaiProxyUrl: ev.currentTarget.value }) }}
+                                class="mb-2 w-[35rem] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                                placeholder="https://api.openai.com/v1/chat/completions"></input></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="italic text-left mt-8">
+                    <b>This feature has not been tested:</b>
+
+                    <p>
+                        If you're experiencing issues, please <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>open an issue on GitHub</a>.<br />
+                        If you find that the feature works well, you can also let us know by <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>opening an issue on GitHub</a> and we'll remove this notice.
+                    </p>
+                </p>
+            </>}
             {openaiService === "azure" && <>
-                <p>
-                    <input
-                        autocomplete="off"
-                        value={azureEndpoint}
-                        onChange={(ev) => { useConfigStore.setState({ azureEndpoint: ev.currentTarget.value }) }}
-                        class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                        placeholder="endpoint"></input>
+                <table>
+                    <tbody class="text-left [&_td]:px-2">
+                        <tr>
+                            <td>endpoint</td>
+                            <td><input
+                                autocomplete="off"
+                                value={azureEndpoint}
+                                onChange={(ev) => { useConfigStore.setState({ azureEndpoint: ev.currentTarget.value }) }}
+                                class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                                placeholder="endpoint"></input></td>
+                        </tr>
+                        <tr>
+                            <td>Authentication method</td>
+                            <td><select value={azureApiKeyAuthentication ? "api-key" : "active-directory"}
+                                onChange={(ev) => { useConfigStore.setState({ azureApiKeyAuthentication: ev.currentTarget.value === "api-key" ? 1 : 0 }) }}
+                                class="mb-2 px-2 text-zinc-600">
+                                <option value="api-key">API key</option>
+                                <option value="active-directory">Azure Active Directory token</option>
+                            </select></td>
+                        </tr>
+                        <tr>
+                            <td>{azureApiKeyAuthentication ? "API key" : "Azure Active Directory token"}</td>
+                            <td><input
+                                type="password"
+                                autocomplete="off"
+                                value={azureAPIKey}
+                                onChange={(ev) => { useConfigStore.setState({ azureAPIKey: ev.currentTarget.value }) }}
+                                class="w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"></input></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="italic text-left mt-8">
+                    <b>This feature has not been tested:</b>
+
+                    <p>
+                        If you're experiencing issues, please <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>open an issue on GitHub</a>.<br />
+                        If you find that the feature works well, you can also let us know by <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>opening an issue on GitHub</a> and we'll remove this notice.
+                    </p>
                 </p>
-                <p>
-                    <select value={azureApiKeyAuthentication ? "api-key" : "active-directory"} onChange={(ev) => { useConfigStore.setState({ azureApiKeyAuthentication: ev.currentTarget.value === "api-key" ? 1 : 0 }) }} class="ml-2 px-2 text-zinc-600">
-                        <option value="api-key">API key</option>
-                        <option value="active-directory">Azure Active Directory token</option>
-                    </select>
-                    <input
-                        type="password"
-                        autocomplete="off"
-                        value={azureAPIKey}
-                        onChange={(ev) => { useConfigStore.setState({ azureAPIKey: ev.currentTarget.value }) }}
-                        class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                        placeholder="secret key"></input>
-                </p>
-                <p class="italic">Untested feature: <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>If this does not work, open an issue on GitHub.</a></p>
             </>}
         </div>
     </div>
