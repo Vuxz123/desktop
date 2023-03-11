@@ -1179,7 +1179,7 @@ Browsing: disabled`, status: 0
             <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
                 {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
                 <div class="flex-1 overflow-y-auto">
-                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-zinc-50 dark:bg-zinc-800")}></div>}
+                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-white dark:bg-zinc-800")}></div>}
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
                         <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
                     </div>}
