@@ -403,7 +403,8 @@ const defaultConfigValues = {
     reversedView: 0,
     whisperLanguage: "",
     editVoiceInputBeforeSending: 0,
-    theme: "automatic" as "automatic" | "light" | "dark"
+    theme: "automatic" as "automatic" | "light" | "dark",
+    sidebar: "automatic" as "automatic" | "hide" | "show",
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -1037,7 +1038,10 @@ Browsing: disabled`, status: 0
         }
     }
 
-    const [isSideBarOpen, setIsSideBarOpen] = useState<boolean>(window.innerWidth > 800)
+    const [isSideBarOpen, setIsSideBarOpen] = useState<boolean>(() => {
+        const { sidebar } = useConfigStore.getState()
+        return sidebar === "show" || sidebar === "automatic" && window.innerWidth > 800
+    })
     const [shouldDisplayAPIKeyInputOverride, setShouldDisplayAPIKeyInputOverride] = useState(false)
     const shouldDisplayAPIKeyInput = useStore((s) => s.threads.length === 0) || shouldDisplayAPIKeyInputOverride
     const threadName = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name ?? "New chat")
@@ -1301,6 +1305,7 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
 const PreferencesDialog = () => {
     const reversed = useConfigStore((s) => s.reversedView)
     const theme = useConfigStore((s) => s.theme)
+    const sidebar = useConfigStore((s) => s.sidebar)
     return <dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Preferences</h2>
@@ -1323,6 +1328,16 @@ const PreferencesDialog = () => {
                         }}>
                             <option value="normal">normal</option>
                             <option value="reversed">reversed</option>
+                        </select></td>
+                    </tr>
+                    <tr>
+                        <td>Sidebar</td>
+                        <td><select class="ml-2 px-2 text-zinc-600" value={sidebar} onChange={(ev) => {
+                            useConfigStore.setState({ sidebar: ev.currentTarget.value as any })
+                        }}>
+                            <option value="automatic">automatic</option>
+                            <option value="show">open by default</option>
+                            <option value="hide">hide by default</option>
                         </select></td>
                     </tr>
                 </tbody>
