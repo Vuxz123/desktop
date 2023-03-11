@@ -835,7 +835,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         reload([id])
         focusInput()
         if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", id) }
-        document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({ behavior: "smooth" })
+        document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({})
     }
 
     const startListening = () => {
