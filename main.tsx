@@ -964,7 +964,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
 
         const speakAudioFeedback = (content: string) => { if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(content, null) } }
 
-        if (ev.code === "Escape") {
+        if (ev.code === "Escape" && !document.querySelector("dialog[open]")) {
             ev.preventDefault()
             useStore.getState().ttsQueue.cancel()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyH") {
