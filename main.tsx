@@ -424,6 +424,7 @@ const defaultConfigValues = {
     sidebar: "automatic" as "automatic" | "hide" | "show",
     openaiProxyAPIKey: "",
     openaiProxyUrl: "",
+    searchEngine: `https://www.google.com/search?q={searchTerms}`,
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -1013,7 +1014,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             // Focus the input box
             ev.preventDefault()
             focusInput()
-            textareaRef.current!.value = "/"
+            setTextareaValueAndAutoResize(textareaRef.current!, "/")
             textareaRef.current!.selectionStart = 1
             textareaRef.current!.selectionEnd = 1
         } else if (ctrlOrCmd(ev) && ev.code === "KeyL") {
@@ -1096,6 +1097,17 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             // Toggle Side Bar
             ev.preventDefault()
             setIsSideBarOpen((v) => !v)
+        } else if (ctrlOrCmd(ev) && ev.code === "KeyG") {
+            ev.preventDefault()
+            const s = useStore.getState()
+            const content = s.visibleMessages.findLast((v) => v.role === "user")?.content
+            if (!content) {
+                s.ttsQueue.speakText("No user messages were found", null)
+                return
+            }
+
+            // Query user's previous message with Google
+            open(useConfigStore.getState().searchEngine.replaceAll("{searchTerms}", encodeURIComponent(content)))
         } else if (ctrlOrCmd(ev) && ev.code === "KeyK") {
             ev.preventDefault()
             setIsWaitingNextKeyPress(true)
@@ -1375,6 +1387,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                         {!isResponseInIntegratedTerminal && <>
                             <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
                                 <textarea
+                                    id="userPromptTextarea"
                                     ref={textareaRef}
                                     class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
                                     placeholder="Explain quantum computing in simple terms"
@@ -1546,6 +1559,8 @@ const PreferencesDialog = () => {
     const reversed = useConfigStore((s) => s.reversedView)
     const theme = useConfigStore((s) => s.theme)
     const sidebar = useConfigStore((s) => s.sidebar)
+    const searchEngine = useConfigStore((s) => s.searchEngine)
+
     return <dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Preferences</h2>
@@ -1579,6 +1594,27 @@ const PreferencesDialog = () => {
                             <option value="show">open by default</option>
                             <option value="hide">hide by default</option>
                         </select></td>
+                    </tr>
+                    <tr>
+                        <td>Search engine</td>
+                        <td>
+                            <input
+                                class="ml-2 bg-zinc-600 pl-2 rounded w-80 text-xs py-1"
+                                value={searchEngine}
+                                onChange={(ev) => {
+                                    useConfigStore.setState({ searchEngine: ev.currentTarget.value as any })
+                                }}
+                                placeholder={`https://www.google.com/search?q={searchTerms}`}></input>
+                            <button class="ml-1 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={async () => {
+                                await reload([])
+                                setTextareaValueAndAutoResize(document.querySelector<HTMLTextAreaElement>("#userPromptTextarea")!, `\
+Google: https://www.google.com/search?q={searchTerms}
+StackOverflow: https://stackoverflow.com/search?q={searchTerms}
+MDN: https://developer.mozilla.org/en-US/search?q={searchTerms}
+What's the URL for Bing?`)
+                                document.querySelector<HTMLDialogElement>("dialog[open]")?.close()
+                            }}>help</button>
+                        </td>
                     </tr>
                 </tbody>
             </table>

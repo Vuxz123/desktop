@@ -28,7 +28,9 @@ https://github.com/chatgptui/desktop/releases
 | Stop speaking | `Escape` |
 | Zoom in | `Ctrl + "+"` |
 | Zoom out | `Ctrl + "-"` |
-| Open integrated terminal | `Ctrl + "/"` |
+| Query user's previous message with Google (or the user specified search engine) | `Ctrl + G` |
+| Start the ChatGPT-powered terminal (related [1]) | `Ctrl + "/"` |
+| Open preferences | `Ctrl + ","` |
 
 Use ⌘Command instead of Ctrl on Mac.
 
@@ -46,3 +48,7 @@ See https://github.com/chatgptui/desktop/wiki/Building-from-Source
 
 # Disclaimer
 This is an unofficial client for the ChatGPT API. All trademarks, registered trademarks, product names and company names or logos mentioned on this app are the property of their respective owners.
+
+---
+
+[1] https://github.com/TheR1D/shell_gpt
