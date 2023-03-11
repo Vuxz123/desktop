@@ -28,6 +28,7 @@ https://github.com/chatgptui/desktop/releases
 | Stop speaking | `Escape` |
 | Zoom in | `Ctrl + "+"` |
 | Zoom out | `Ctrl + "-"` |
+| Open integrated terminal | `Ctrl + "/"` |
 
 Use ⌘Command instead of Ctrl on Mac.
 

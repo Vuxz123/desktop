@@ -1,7 +1,7 @@
 import { render } from "preact"
 import { Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import ReactMarkdown from "react-markdown"
-import { open } from '@tauri-apps/api/shell'
+import { open, Command } from '@tauri-apps/api/shell'
 import { fetch } from '@tauri-apps/api/http'
 import { create } from "zustand"
 import Database from "tauri-plugin-sql-api"
@@ -154,6 +154,7 @@ class TextToSpeechQueue {
 }
 
 const isMac = navigator.platform.startsWith("Mac")
+const isWindows = navigator.platform.startsWith("Win")
 const ctrlOrCmd = (ev: KeyboardEvent) => (isMac ? /* cmd */ev.metaKey : ev.ctrlKey)
 
 /** Renders markdown contents. */
@@ -228,23 +229,33 @@ const Message = (props: { depth: number }) => {
     const isFolded = useStore((s) => s.folded.has(s.visibleMessages[props.depth]?.id as number))
     const scrollIntoView = useStore((s) => s.scrollIntoView === s.visibleMessages[props.depth]?.id)
     const ref = useRef<HTMLDivElement>(null)
+    const isResponseInIntegratedTerminal = useStore((s) => role === "assistant" && s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name === "Integrated Terminal")
 
+    let processedContent = content
+    if (isResponseInIntegratedTerminal && content?.trim()) {
+        if (content?.trim()?.includes("```")) {
+            const block = extractFirstCodeBlock(content)
+            if (block) {
+                processedContent = "```\n" + block + "\n```"
+            }
+        } else {
+            processedContent = "```" + (isWindows ? "powershell" : "bash") + "\n" + content + "\n```"
+        }
+    }
     useEffect(() => {
         if (!scrollIntoView) { return }
         ref.current?.scrollIntoView({ behavior: "smooth" })
         useStore.setState({ scrollIntoView: null })
     }, [ref, scrollIntoView])
 
-    if (role === "root" || role === "system") {
+    if (role === "root" || (role === "system" && isDefaultPrompt(content ?? ""))) {
         return <></>
     } else {
         const saveAndSubmit = async () => {
             const s = useStore.getState()
-            const userMessage = { role: "user", content: textareaRef.current!.value, status: 0 } as const
-            const user = await appendMessage(s.visibleMessages.slice(0, props.depth).map((v) => v.id), userMessage)
+            const path = await appendMessage(s.visibleMessages.slice(0, props.depth).map((v) => v.id), { role: "user", content: textareaRef.current!.value, status: 0 })
             setEditing(false)
-            reload([...s.visibleMessages.map((v) => v.id), user])
-            await completeAndAppend([...s.visibleMessages.slice(0, props.depth), { id: user, ...userMessage }])
+            await completeAndAppend(path)
         }
         return <div ref={ref} class={"border-b border-b-zinc-200 dark:border-b-0" + (status === 1 ? " bg-red-100 dark:bg-red-900" : role === "assistant" ? " bg-zinc-100 dark:bg-zinc-700" : "")}>
             <div class="max-w-3xl mx-auto relative p-6 pt-8">
@@ -346,7 +357,7 @@ const Message = (props: { depth: number }) => {
                 </>}
 
                 {/* Response */}
-                {(isFolded || editing) ? "" : role === "assistant" ? <Markdown content={content ?? ""}></Markdown> : <div class="whitespace-pre-wrap break-words select-text">{content}</div>}
+                {(isFolded || editing) ? "" : (role === "assistant" || role === "system") ? <Markdown content={processedContent ?? ""}></Markdown> : <div class="whitespace-pre-wrap break-words select-text">{content}</div>}
                 {isFolded && <span class="cursor-pointer text-zinc-500 hover:text-zinc-600 decoration-dashed italic" onClick={() => {
                     const set = new Set(useStore.getState().folded)
                     set.delete(useStore.getState().visibleMessages[props.depth]!.id)
@@ -492,8 +503,8 @@ const reload = async (path: MessageId[]) => {
         .then((threads) => { useStore.setState({ threads }) })
 }
 
-/** Append a message to the thread. */
-const appendMessage = async (parents: number[], message: Readonly<PartialMessage>) => {
+/** Appends a message to the thread and returns its path. */
+const appendMessage = async (parents: readonly number[], message: Readonly<PartialMessage>) => {
     let id: number
     if (parents.length === 0) {
         // fixes: cannot store TEXT value in INTEGER column message.parent
@@ -502,7 +513,7 @@ const appendMessage = async (parents: number[], message: Readonly<PartialMessage
         id = (await db.execute("INSERT INTO message (parent, role, status, content) VALUES (?, ?, ?, ?) RETURNING id", [parents.at(-1)!, message.role, message.status, message.content])).lastInsertId
     }
     await reload([...parents, id])
-    return id
+    return [...parents, id]
 }
 
 const chatGPTPricePerToken = 0.002 / 1000
@@ -658,37 +669,52 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
     }
 }
 
+const extractFirstCodeBlock = (content: string) => /```[^\n]*\n*([\s\S]*?)```/.exec(content)?.[1]
+
 /** Generates an assistant's response and appends it to the thread. */
-const completeAndAppend = async (messages: readonly ({ id: number } & PartialMessage)[]): Promise<PartialMessage> => {
-    const id = await appendMessage(messages.map((v) => v.id), { role: "assistant", content: "", status: -1 })
+const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ message: PartialMessage, path: MessageId[] }> => {
+    const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 })
+    const id = path.at(-1)!
     useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
     try {
         const ttsId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         const splitLines = new SplitLines((line) => {
             useStore.getState().ttsQueue.pushSegment(ttsId, line, id)
         })
-        const newMessage = await complete(messages, async (content, delta) => {
-            splitLines.add(delta)
-            await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
-            reload([...messages.map((v) => v.id), id])
-        })
+        const newMessage = await complete(
+            await Promise.all(messages.map((v) =>
+                db.select<{ role: "user" | "assistant" | "system", content: string }[]>(
+                    "SELECT role, content FROM message WHERE id = ?", [v]).then((records) => records[0]!))),
+            async (content, delta) => {
+                splitLines.add(delta)
+                await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
+                reload(path)
+            },
+        )
         splitLines.end()
         if (newMessage.status === 1) {
             await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
             useStore.getState().ttsQueue.speakText(newMessage.content + `\nPress ${isMac ? "command" : "control"} plus shift plus R to retry.`, id)
         } else {
-            await db.execute("UPDATE message SET role = ?, status = ? WHERE id = ?", [newMessage.role, newMessage.status, id])
+            if (useStore.getState().threads.find((v) => v.id === messages[0]!)?.name === "Integrated Terminal") {
+                // Extract the first code block
+                const block = extractFirstCodeBlock(newMessage.content)
+                if (block) {
+                    newMessage.content = block
+                }
+            }
+            await db.execute("UPDATE message SET role = ?, status = ?, content = ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
         }
-        reload([...messages.map((v) => v.id), id])
+        reload(path)
         useStore.setState({ scrollIntoView: id })
-        return newMessage
+        return { message: newMessage, path }
     } finally {
         useStore.setState((s) => ({ waitingAssistantsResponse: s.waitingAssistantsResponse.filter((v) => v !== id) }))
     }
 }
 
 /** Automatically names the thread. */
-const autoName = async (content: string, root: MessageId) => {
+const autoName = async (content: string, root: MessageId, tags: readonly string[]) => {
     const res = await complete([
         { role: "user", content: `What is the topic of the following message? Answer using only a few words, and refrain from adding any additional comments beyond the topic name.\n\nMessage:${content}` }
     ])
@@ -705,7 +731,7 @@ const autoName = async (content: string, root: MessageId) => {
             // "test"
             res.content = m[1]!
         }
-        await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [root, res.content])
+        await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [root, res.content + tags.map((t) => ` #${t}`).join("")])
         reload(useStore.getState().visibleMessages.map((v) => v.id))
         return
     }
@@ -716,6 +742,13 @@ const autoName = async (content: string, root: MessageId) => {
 const getHighlightedText = (text: string, highlight: string) => {
     const parts = text.split(new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi"))
     return <span>{parts.map(part => part.toLowerCase() === highlight.toLowerCase() ? <b class="text-orange-200">{part}</b> : part)}</span>
+}
+
+/** "test #foo #bar" -> ["foo", "bar"] */
+const extractHashtags = (content: string) => {
+    const m = /(?: #[^#\s]+?)*$/.exec(content)
+    if (!m || !m[0]) { return [] }
+    return m[0].split('#').map((v) => v.trim()).filter((v) => v)
 }
 
 /** Renders an entry in the thread list. */
@@ -747,7 +780,7 @@ const ThreadListItem = (props: { i: number }) => {
                 let node = (await db.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [id])).at(-1)
                 while (node) {
                     if (node.role === "user") {
-                        autoName(node.content, id!)
+                        autoName(node.content, id!, extractHashtags(node.content))
                         break
                     }
                     node = (await db.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [node.id])).at(-1)
@@ -773,12 +806,17 @@ const ThreadListItem = (props: { i: number }) => {
         data-thread-id={id}
         onClick={() => reload([id!])}
         onContextMenu={onContextMenu}>
-        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-message inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        {name !== "Integrated Terminal" && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-message inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
             <path d="M4 21v-13a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-9l-4 4"></path>
             <path d="M8 9l8 0"></path>
             <path d="M8 13l6 0"></path>
-        </svg>
+        </svg>}
+        {name === "Integrated Terminal" && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-terminal inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+            <path d="M5 7l5 5l-5 5"></path>
+            <path d="M12 19l7 0"></path>
+        </svg>}
         {renaming ? "" : (searchQuery ? getHighlightedText(name, searchQuery) : name)}
         {renaming && <input
             ref={renameInputRef}
@@ -819,12 +857,28 @@ const SearchBar = () => {
         placeholder="Search"></input>
 }
 
+const defaultPrompt = `\
+Assistant is a large language model trained by OpenAI.
+knowledge cutoff: 2021-09
+Current date: ${Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date())}
+Browsing: disabled`
+
+const isDefaultPrompt = (prompt: string) =>
+    new RegExp(String.raw`^Assistant is a large language model trained by OpenAI\.
+knowledge cutoff: 2021-09
+Current date: \w+ \d+, \d+
+Browsing: disabled$`).test(prompt)
+
+if (!isDefaultPrompt(defaultPrompt)) {
+    console.error(`!isDefaultPrompt(defaultPrompt)`)
+}
+
 /** Renders the application. */
 const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const numMessages = useStore((s) => s.visibleMessages.length)
     const numThreads = useStore((s) => s.threads.length)
-    const apiKey = useConfigStore((s) => s.APIKey)
+    const isResponseInIntegratedTerminal = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name === "Integrated Terminal" && s.visibleMessages.at(-1)?.role === "assistant")
 
     useEffect(() => {
         focusInput()
@@ -860,8 +914,8 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     })
 
     const focusInput = () => {
-        textareaRef.current!.focus()
-        textareaRef.current!.select()
+        textareaRef.current?.focus()
+        textareaRef.current?.select()
         if (useConfigStore.getState().audioFeedback) { invoke("sound_focus_input") }
     }
 
@@ -949,6 +1003,13 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             // Speak texts in the input box
             ev.preventDefault()
             useStore.getState().ttsQueue.speakText(textareaRef.current!.value, null, true)
+        } else if (ctrlOrCmd(ev) && ev.key === "/") {
+            // Focus the input box
+            ev.preventDefault()
+            focusInput()
+            textareaRef.current!.value = "/"
+            textareaRef.current!.selectionStart = 1
+            textareaRef.current!.selectionEnd = 1
         } else if (ctrlOrCmd(ev) && ev.code === "KeyL") {
             // Focus the input box
             ev.preventDefault()
@@ -1041,34 +1102,55 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     /** Sends the user's message. */
     const send = async () => {
         if (textareaRef.current!.value === "") { return }
-        const userMessage = { role: "user", content: textareaRef.current!.value, status: 0 } as const
         let s = useStore.getState()
-        let parent: MessageId
-        let isFirstCompletion = false
-        let root: MessageId
-        if (s.visibleMessages.length === 0) {
-            isFirstCompletion = true
-            parent = root = await appendMessage([], { role: "root", content: "", status: 0 })
-            parent = await appendMessage([root], {
-                role: "system", content: `\
-Assistant is a large language model trained by OpenAI.
-knowledge cutoff: 2021-09
-Current date: ${Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date())}
-Browsing: disabled`, status: 0
-            })
-            await reload([root, parent])
-            s = useStore.getState()
-        } else {
-            parent = s.visibleMessages.at(-1)!.id
-            root = s.visibleMessages[0]!.id
+
+        let path: MessageId[]
+
+        const run = async (shouldAutoName: string | null, tags: string[]) => {
+            textareaRef.current!.value = ""
+            autoFitTextareaHeight()
+            const assistant = await completeAndAppend(path)
+            if (assistant.message.status === 0 && shouldAutoName) {
+                // do not wait
+                autoName(shouldAutoName, path[0]!, tags)
+            }
+            return assistant
         }
-        const user = await appendMessage([...s.visibleMessages.map((v) => v.id), parent], userMessage)
-        textareaRef.current!.value = ""
-        autoFitTextareaHeight()
-        const assistant = await completeAndAppend([...s.visibleMessages, { id: user, ...userMessage }])
-        if (assistant.status === 0 && isFirstCompletion) {
-            // do not wait
-            autoName(userMessage.content, root)
+
+        if (textareaRef.current!.value.startsWith("/")) {
+            // Generate a shell script if the prompt is prefixed with "/"
+            // remove "/"
+            const content = textareaRef.current!.value.slice(1)
+            textareaRef.current!.value = ""
+
+            const thread = s.threads.find((v) => v.name === "Integrated Terminal")
+            if (!thread) {
+                path = await appendMessage([], { role: "root", content: "", status: 0 })
+                await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [path[0]!, "Integrated Terminal"])
+                await reload(path)
+            } else {
+                path = [thread.id]
+            }
+            path = await appendMessage(path, { role: "user", content, status: 0 })
+            path = await appendMessage(path, {
+                // The prompt from https://github.com/TheR1D/shell_gpt/ version 0.7.0, MIT License, Copyright (c) 2023 Farkhod Sadykov
+                role: "system",
+                content: `Provide only ${isWindows ? "PowerShell" : "Bash"} command as output, without any additional text or prompt.`,
+                status: 0,
+            })
+            await run(null, [])
+        } else if (s.visibleMessages.length === 0) {
+            // Append the system message if this is the first message in the thread
+            path = await appendMessage([], { role: "root", content: "", status: 0 })
+            path = await appendMessage(path, {
+                role: "system", content: defaultPrompt, status: 0
+            })
+            const content = textareaRef.current!.value
+            path = await appendMessage(path, { role: "user", content, status: 0 })
+            run(content, [])
+        } else {
+            path = await appendMessage(s.visibleMessages.map((v) => v.id), { role: "user", content: textareaRef.current!.value, status: 0 })
+            run(null, [])
         }
     }
 
@@ -1227,41 +1309,98 @@ Browsing: disabled`, status: 0
                 <div class={"px-2 " + (reversed ? "top-4 left-0 right-0 mx-auto text-center absolute max-w-3xl" : "pt-4 pb-4 relative bg-white dark:bg-zinc-800")}>
                     <RegenerateResponse />
                     <div class="leading-4 flex">
-                        <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
-                            <textarea
-                                ref={textareaRef}
-                                class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
-                                placeholder="Explain quantum computing in simple terms"
-                                rows={1}
-                                defaultValue={props.prompt}
-                                onKeyDown={(ev) => {
-                                    if (
-                                        // Single line & Enter
-                                        !ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey && ev.code === "Enter" && textareaRef.current!.value !== "" && !textareaRef.current!.value.includes("\n") ||
+                        {isResponseInIntegratedTerminal && <>
+                            <div class={"flex-1 flex " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ")}>
+                                <div class={"shadow-light text-center bg-zinc-100 py-3 relative cursor-pointer hover:bg-zinc-200 [&:has(svg:hover)]:bg-zinc-100 text-zinc-600 dark:shadow-dark rounded-lg bg-zinc100 flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}
+                                    onClick={async () => {
+                                        const path = useStore.getState().visibleMessages.map((v) => v.id)
+                                        const { content } = useStore.getState().visibleMessages.at(-1)!
+                                        const p = isWindows
+                                            ? new Command("exec-pwsh", ["-c", content]) // untested
+                                            : new Command("exec-bash", ["-c", content])
 
-                                        // Multi-line & Ctrl(Cmd)+Enter
-                                        ctrlOrCmd(ev) && ev.code === "Enter"
-                                    ) {
-                                        ev.preventDefault()
-                                        send()
-                                        return
-                                    }
-                                }}
-                                onInput={autoFitTextareaHeight}></textarea>
-                            <div
-                                class={"absolute bottom-2 right-5 cursor-pointer p-1"}
-                                onClick={() => { send() }}>
-                                {/* tabler-icons, MIT license, Copyright (c) 2020-2023 Paweł Kuna */}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-send dark:stroke-slate-100" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.3" stroke="#000000" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                    <line x1="10" y1="14" x2="21" y2="3" />
-                                    <path d="M21 3l-6.5 18a0.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a0.55 .55 0 0 1 0 -1l18 -6.5" />
-                                </svg>
+                                        // TODO: stream output
+                                        const lines: string[] = []
+                                        p.stdout.on("data", (line) => { lines.push(line) })
+                                        p.stderr.on("data", (line) => { lines.push(line) })
+                                        let appended = false
+                                        p.on("error", (err) => {
+                                            if (appended) { return }
+                                            appended = true
+                                            appendMessage(path, {
+                                                role: "system",
+                                                content: `The command returned the following error:\n\`\`\`\n${err}\n\`\`\``,
+                                                status: 1,
+                                            })
+                                        })
+                                        p.on("close", (data) => {
+                                            if (appended) { return }
+                                            appended = true
+                                            let concatenatedOutput = lines.join("\n")
+                                            // Cut at ~1000 tokens to avoid bankruptcy
+                                            // TODO: add a way to display the entire output
+                                            concatenatedOutput = concatenatedOutput.length > 4000 ? concatenatedOutput.slice(0, 4000) + "\n..." : concatenatedOutput
+                                            const statusText = (data.code === 0 ? `The command finished successfully.` : `The command finished with code ${data.code}${data.signal ? ` with signal ${data.signal}` : ""}.`)
+                                            useStore.getState().ttsQueue.speakText(statusText, null)
+                                            appendMessage(path, {
+                                                role: "system",
+                                                content: statusText + `\nThe output was:\n\`\`\`\n${concatenatedOutput}\n\`\`\``,
+                                                status: 0,
+                                            })
+                                        })
+                                        await p.spawn()
+                                    }}>
+                                    Execute
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute top-0 bottom-0 my-auto right-0 p-2 hover:bg-zinc-300 dark:stroke-slate-100 rounded" width="40" height="40" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
+                                        onClick={(ev) => {
+                                            ev.preventDefault()
+                                            ev.stopImmediatePropagation()
+
+                                        }}>
+                                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                                        <path d="M18 6l-12 12"></path>
+                                        <path d="M6 6l12 12"></path>
+                                    </svg>
+                                </div>
                             </div>
-                        </div>
-                        <div class="flex items-end">
-                            <TokenCounter textareaRef={textareaRef} />
-                        </div>
+                        </>}
+                        {!isResponseInIntegratedTerminal && <>
+                            <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
+                                <textarea
+                                    ref={textareaRef}
+                                    class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
+                                    placeholder="Explain quantum computing in simple terms"
+                                    rows={1}
+                                    defaultValue={props.prompt}
+                                    onKeyDown={(ev) => {
+                                        if (
+                                            // Single line & Enter
+                                            !ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey && ev.code === "Enter" && textareaRef.current!.value !== "" && !textareaRef.current!.value.includes("\n") ||
+
+                                            // Multi-line & Ctrl(Cmd)+Enter
+                                            ctrlOrCmd(ev) && ev.code === "Enter"
+                                        ) {
+                                            ev.preventDefault()
+                                            send()
+                                            return
+                                        }
+                                    }}
+                                    onInput={autoFitTextareaHeight}></textarea>
+                                <div
+                                    class={"absolute bottom-2 right-5 cursor-pointer p-1"}
+                                    onClick={() => { send() }}>
+                                    {/* tabler-icons, MIT license, Copyright (c) 2020-2023 Paweł Kuna */}
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-send dark:stroke-slate-100" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.3" stroke="#000000" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                        <line x1="10" y1="14" x2="21" y2="3" />
+                                        <path d="M21 3l-6.5 18a0.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a0.55 .55 0 0 1 0 -1l18 -6.5" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="flex items-end">
+                                <TokenCounter textareaRef={textareaRef} />
+                            </div>
+                        </>}
                     </div>
                 </div>
             </div>
@@ -1863,7 +2002,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
 
 const regenerateResponse = async () => {
     const s = useStore.getState()
-    await completeAndAppend(s.visibleMessages.slice(0, -1))
+    await completeAndAppend(s.visibleMessages.slice(0, -1).map((v) => v.id))
 }
 
 /** Regenerates an assistant's message. */
