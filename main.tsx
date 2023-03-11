@@ -17,6 +17,7 @@ import createTablesSQL from "./create_tables.sql?raw"
 import getTokenUsageSQL from "./get_token_usage.sql?raw"
 // @ts-ignore
 import findParentsSQL from "./find_parents.sql?raw"
+import PQueue from "p-queue"
 
 /** Database connection. */
 let db: Database
@@ -55,8 +56,8 @@ class SplitLines {
 }
 
 class TextToSpeechQueue {
-    private readonly queue: (() => Promise<void>)[] = []
-    private running = false
+    private readonly preparationQueue = new PQueue({ concurrency: 1 })
+    private readonly audioQueue = new PQueue({ concurrency: 1 })
     private textId: number | null = null
 
     /** Clears the queue. */
@@ -65,7 +66,8 @@ class TextToSpeechQueue {
         if (window.speechSynthesis) {
             try { window.speechSynthesis.cancel() } catch { }
         }
-        this.queue.length = 0
+        this.preparationQueue.clear()
+        this.audioQueue.clear()
     }
 
     /** Clears the queue and enqueues the text. */
@@ -78,27 +80,18 @@ class TextToSpeechQueue {
     /** Enqueues a text if the given textId is the same as the previous one. */
     async pushSegment(textId: number, content: string, messageIdForDeletion: MessageId | null) {
         if (this.textId !== textId) {
-            this.queue.length = 0
+            this.preparationQueue.clear()
+            this.audioQueue.clear()
             this.textId = textId
         }
-        const speak = this.prepare(content, messageIdForDeletion)
-        this.queue.push(async () => {
+        const speak = this.preparationQueue.add(() => this.prepare(content, messageIdForDeletion))
+        this.audioQueue.add(async () => {
             await (await speak)?.()
         })
-        if (!this.running) {
-            this.running = true
-            try {
-                while (this.queue.length > 0) {
-                    await this.queue.shift()?.()
-                }
-            } finally {
-                this.queue.length = 0
-                this.running = false
-            }
-        }
     }
 
     private async prepare(content: string | null, messageIdForDeletion: MessageId | null, noCache: boolean = false): Promise<(() => Promise<void>) | void> {
+        console.log(`text-to-speech: ${content?.length ?? "-"} characters`)
         if (content?.trim() === "") { return }
         const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
         switch (ttsBackend) {
