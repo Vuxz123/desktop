@@ -523,10 +523,30 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         const maxCostPerMessage = +(await db.select<{ value: number }[]>("SELECT value FROM config WHERE key = 'maxCostPerMessage'"))[0]!.value
         const messagesFed = messages.filter((v) => v.role !== "root").map((v) => ({ role: v.role, content: v.content }))
         let numParentsFed = -1 // all
-        while (messagesFed.length > 1 && (await invoke<number>("count_tokens", { content: messagesFed.map((v) => v.content).join(" ") }) + /* expected response length */150) * chatGPTPricePerToken > maxCostPerMessage) {
-            messagesFed.splice(0, 1)
-            numParentsFed = messagesFed.length
+
+        // Drop messages
+        const expectedGeneratedTokenCount = 150
+        let omitted = false
+        while (true) {
+            // TODO: performance optimization
+            const tokens = await invoke<number>("count_tokens", { content: messagesFed.map((v) => v.content).join(" ") }) + expectedGeneratedTokenCount
+            const maxTokens = maxCostPerMessage / chatGPTPricePerToken
+            if (tokens < maxTokens) {
+                break
+            }
+            if (messagesFed.length > 1) {
+                messagesFed.splice(0, 1)  // drop the oldest message
+                numParentsFed = messagesFed.length
+            } else {
+                const content = messagesFed[0]!.content
+                messagesFed[0]!.content = content.slice(0, Math.floor(content.length * maxTokens / tokens * 0.9))  // cut tail
+                omitted = true
+            }
         }
+        if (omitted) {
+            messagesFed[0]!.content += " ... (omitted)"
+        }
+
         // FIXME: display the number of parents fed
         console.log(`numParentsFed: ${numParentsFed}`)
         console.log(messagesFed)
