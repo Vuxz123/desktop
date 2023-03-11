@@ -11,8 +11,8 @@ https://github.com/chatgptui/desktop/releases
 |--|--|
 | Focus the input box | `Ctrl + L` |
 | Create a new thread | `Ctrl + N` |
-| Move to the next thread | `Ctrl + Tab` |
-| Move to the previous thread | `Ctrl + Shift + Tab` |
+| Move to the previous thread | `Ctrl + Tab` |
+| Move to the next thread | `Ctrl + Shift + Tab` |
 | Regenerate response | `Ctrl + Shift + R` |
 | Stop generating | `Ctrl + Shift + S` |
 | Send single-line message | `Enter` |

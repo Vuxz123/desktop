@@ -948,7 +948,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             // Regenerate response
             ev.preventDefault()
             regenerateResponse()
-        } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "Tab") {
+        } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "Tab") {
             // Move to the newer thread
             ev.preventDefault()
             const s = useStore.getState()
@@ -966,7 +966,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     openThread(s.threads[i - 1]!.id)
                 }
             }
-        } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "Tab") {
+        } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "Tab") {
             // Move to the older thread
             ev.preventDefault()
             const s = useStore.getState()
