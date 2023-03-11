@@ -593,17 +593,20 @@ fn stop_all_chat_completions() {
 
 async fn start_chat_completion_inner(
     request_id: u64,
-    openai_key: String,
+    secret_key: String, // OpenAI API key or Azure Active Directory token
     body: String,
+    endpoint: String, // use "https://api.openai.com/v1/chat/completions" for openai
+    api_key_authentication: bool, // use false for openai, see https://learn.microsoft.com/en-us/azure/cognitive-services/openai/reference#authentication for azure
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-    let mut res = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {openai_key}"))
-        .body(body)
-        .send()
-        .await?;
+    let client = reqwest::Client::new()
+        .post(endpoint)
+        .header("Content-Type", "application/json");
+    let client = if api_key_authentication {
+        client.header("api-key", secret_key)
+    } else {
+        client.header("Authorization", format!("Bearer {secret_key}"))
+    };
+    let mut res = client.body(body).send().await?;
     let mut buf = Vec::<u8>::new();
     let mut is_prev_char_newline = false;
     if res.status() != 200 {
@@ -641,10 +644,20 @@ async fn start_chat_completion_inner(
 #[tauri::command]
 async fn start_chat_completion(
     request_id: u64,
-    openai_key: String,
+    secret_key: String,
     body: String,
+    endpoint: String,
+    api_key_authentication: bool,
 ) -> Option<String> {
-    if let Err(err) = start_chat_completion_inner(request_id, openai_key, body).await {
+    if let Err(err) = start_chat_completion_inner(
+        request_id,
+        secret_key,
+        body,
+        endpoint,
+        api_key_authentication,
+    )
+    .await
+    {
         Some(err.to_string())
     } else {
         None

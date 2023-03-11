@@ -384,6 +384,10 @@ type MessageId = number
 
 const defaultConfigValues = {
     APIKey: "",
+    azureApiKeyAuthentication: 1,
+    azureAPIKey: "",
+    azureEndpoint: "",
+    openaiService: "openai" as "openai" | "azure",
     ttsBackend: (window.speechSynthesis ? "web-speech-api" : "off") as "off" | "pico2wave" | "web-speech-api" | "azure",
     azureTTSRegion: "",
     azureTTSResourceKey: "",
@@ -568,11 +572,32 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
             loop()
         })
         try {
-            err = await invoke<string | null>("start_chat_completion", {
-                requestId,
-                openaiKey: useConfigStore.getState().APIKey,
-                body: JSON.stringify({ model, messages: messagesFed, stream: true }),
-            })
+            const { APIKey, openaiService, azureEndpoint, azureApiKeyAuthentication, azureAPIKey } = useConfigStore.getState()
+            if (openaiService === "azure") {
+                err = await invoke<string | null>("start_chat_completion", {
+                    requestId,
+                    secretKey: azureAPIKey,
+                    body: JSON.stringify({
+                        prompt: messagesFed.map((v) => `<|im_start|>${v.role}\n${v.content}\n<|im_end|>\n`).join("") + "<|im_start|>assistant",
+                        stream: true,
+                        stop: ["<|im_end|>"],
+                    }),
+                    endpoint: azureEndpoint,
+                    apiKeyAuthentication: !!azureApiKeyAuthentication,
+                })
+            } else {  // openai
+                err = await invoke<string | null>("start_chat_completion", {
+                    requestId,
+                    secretKey: APIKey,
+                    body: JSON.stringify({
+                        model,
+                        messages: messagesFed,
+                        stream: true,
+                    }),
+                    endpoint: "https://api.openai.com/v1/chat/completions",
+                    apiKeyAuthentication: false,
+                })
+            }
         } finally {
             done = true
         }
@@ -1143,25 +1168,10 @@ Browsing: disabled`, status: 0
                 </div>
             </div>
             <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
-                <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
-                    {shouldDisplayAPIKeyInput && <>
-                        <input
-                            type="password"
-                            autocomplete="off"
-                            value={apiKey}
-                            onChange={(ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}
-                            class="my-4 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
-                            placeholder="OpenAI API Key"
-                            onInput={async (ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}></input>
-                        <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
-                    </>}
-                </div>
                 <div class="flex-1 overflow-y-auto">
                     {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-zinc-50 dark:bg-zinc-800")}></div>}
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
-                        {!shouldDisplayAPIKeyInput && <>
-                            <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
-                        </>}
+                        <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
                     </div>}
                     {(reversed ? (x: number[]) => x.reverse() : (x: number[]) => x)([...Array(numMessages).keys()]).map((i) => <Message key={i} depth={i} />)}
                     <div class="h-20"></div>
@@ -1208,6 +1218,7 @@ Browsing: disabled`, status: 0
                 </div>
             </div>
         </div>
+        {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
         <SpeechToTextDialog />
         <TextToSpeechDialog />
         <BudgetDialog />
@@ -1219,6 +1230,60 @@ Browsing: disabled`, status: 0
             class="m-0 px-0 py-[0.15rem] absolute left-0 top-0 z-30 flex flex-col bg-zinc-100 dark:bg-zinc-800 outline-gray-200 dark:outline-zinc-600 shadow-lg whitespace-pre rounded-lg [&:not([open])]:hidden [&::backdrop]:bg-transparent"
             onClick={(ev) => { ev.currentTarget.close() }}></dialog>
     </>
+}
+
+const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
+    const apiKey = useConfigStore((s) => s.APIKey)
+    const azureAPIKey = useConfigStore((s) => s.azureAPIKey)
+    const openaiService = useConfigStore((s) => s.openaiService)
+    const azureEndpoint = useConfigStore((s) => s.azureEndpoint)
+    const azureApiKeyAuthentication = useConfigStore((s) => s.azureApiKeyAuthentication)
+    return <div class={"fixed left-0 right-0 top-40 z-40 text-center" + (isSideBarOpen ? "" : " px-16")}>
+        <p class="dark:text-zinc-100 mb-2">
+            <select value={openaiService} onChange={(ev) => { useConfigStore.setState({ openaiService: ev.currentTarget.value as any }) }} class="ml-2 px-2 text-zinc-600">
+                <option value="openai">OpenAI API</option>
+                <option value="azure">Azure OpenAI Service</option>
+            </select>
+        </p>
+        {openaiService === "openai" && <>
+            <p>
+                <input
+                    type="password"
+                    autocomplete="off"
+                    value={apiKey}
+                    onChange={(ev) => { useConfigStore.setState({ APIKey: ev.currentTarget.value }) }}
+                    class="mb-2 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                    placeholder="OpenAI API Key"></input>
+            </p>
+            <p>
+                <a class="cursor-pointer ml-4 text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/account/api-keys") }}>Get your API key here</a>
+            </p>
+        </>}
+        {openaiService === "azure" && <>
+            <p>
+                <input
+                    autocomplete="off"
+                    value={azureEndpoint}
+                    onChange={(ev) => { useConfigStore.setState({ azureEndpoint: ev.currentTarget.value }) }}
+                    class="mb-2 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                    placeholder="endpoint"></input>
+            </p>
+            <p>
+                <select value={azureApiKeyAuthentication ? "api-key" : "active-directory"} onChange={(ev) => { useConfigStore.setState({ azureApiKeyAuthentication: ev.currentTarget.value === "api-key" ? 1 : 0 }) }} class="ml-2 px-2 text-zinc-600">
+                    <option value="api-key">API key</option>
+                    <option value="active-directory">Azure Active Directory token</option>
+                </select>
+                <input
+                    type="password"
+                    autocomplete="off"
+                    value={azureAPIKey}
+                    onChange={(ev) => { useConfigStore.setState({ azureAPIKey: ev.currentTarget.value }) }}
+                    class="mb-2 w-[calc(min(20rem,80%))] shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                    placeholder="secret key"></input>
+            </p>
+            <p class="italic">Untested feature: <a class="cursor-pointer underline" onClick={() => { open("https://github.com/chatgptui/desktop/issues") }}>If this does not work, open an issue on GitHub.</a></p>
+        </>}
+    </div>
 }
 
 const PreferencesDialog = () => {
