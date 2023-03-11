@@ -1162,7 +1162,7 @@ Browsing: disabled`, status: 0
                 <div class={"px-2 " + (reversed ? "top-4 left-0 right-0 mx-auto text-center absolute max-w-3xl" : "pt-4 pb-4 relative bg-white dark:bg-zinc-800")}>
                     <RegenerateResponse />
                     <div class="leading-4 flex">
-                        <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
+                        <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
                             <textarea
                                 ref={textareaRef}
                                 class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 px-4 resize-none bg-transparent focus-within:outline-none"
