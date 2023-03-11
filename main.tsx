@@ -402,33 +402,39 @@ const defaultConfigValues = {
     theme: "automatic" as "automatic" | "light" | "dark"
 } satisfies Record<string, string | number>
 
-const useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
-/** Initializes the `useConfigStore`. */
-const loadConfig = (() => {
-    // Override setState
-    const setState = useConfigStore.setState
-    useConfigStore.setState = async (partial) => {
+const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
+const _setState = _useConfigStore.setState
+type AsyncStore<S> = {
+    setState(partial: Partial<S>): Promise<void>
+    getState(): S
+    subscribe(callback: (state: S, previous: S) => void): void
+    <U>(selector: (state: S) => U, equals?: (a: U, b: U) => boolean): U
+}
+const useConfigStore: AsyncStore<typeof defaultConfigValues> = Object.assign(_useConfigStore, {
+    setState: async (partial: Partial<typeof defaultConfigValues>) => {
+        console.log("called?")
         for (const [k, v] of Object.entries(partial)) {
             await db.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", [k, v])
         }
-        setState(partial)
+        _setState.call(_useConfigStore, partial)
     }
+})
 
-    return async () => {
-        // Retrieve data from the database
-        const obj = Object.fromEntries((await db.select<{ key: string, value: string }[]>("SELECT key, value FROM config", []))
-            .map(({ key, value }) => [key, typeof defaultConfigValues[key as keyof typeof defaultConfigValues] === "number" ? +value : value]))
+/** Initializes the useConfigStore. */
+const loadConfig = async () => {
+    // Retrieve data from the database
+    const obj = Object.fromEntries((await db.select<{ key: string, value: string }[]>("SELECT key, value FROM config", []))
+        .map(({ key, value }) => [key, typeof defaultConfigValues[key as keyof typeof defaultConfigValues] === "number" ? +value : value]))
 
-        // Set default values
-        for (const [k, v] of Object.entries(defaultConfigValues)) {
-            if (!(k in obj)) {
-                obj[k] = v
-            }
+    // Set default values
+    for (const [k, v] of Object.entries(defaultConfigValues)) {
+        if (!(k in obj)) {
+            obj[k] = v
         }
-
-        useConfigStore.setState(obj)
     }
-})()
+
+    await useConfigStore.setState(obj)
+}
 
 type State = {
     waitingAssistantsResponse: MessageId[]
@@ -1721,8 +1727,10 @@ const main = async () => {
         const theme = useConfigStore.getState().theme
         if (theme === "dark" || theme === "automatic" && window.matchMedia('(prefers-color-scheme: dark)').matches) {
             document.documentElement.classList.add("dark")
+            localStorage.setItem("theme", "dark")
         } else {
             document.documentElement.classList.remove("dark")
+            localStorage.setItem("theme", "light")
         }
     }
     applyTheme()

@@ -6,8 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ChatGPT</title>
     <link rel="stylesheet" href="./style.scss">
+    <script type="module">
+        // prevent FOUC
+        if (localStorage.theme) {
+            if (localStorage.theme === "dark") {
+                document.documentElement.classList.add("dark")
+            }
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add("dark")
+        }
+        if (navigator.platform.startsWith("Mac")) { // Mac does not support transparent background
+            document.documentElement.classList.add("dark:bg-zinc-800 text-gray-700 select-none")
+        }
+    </script>
 </head>
-<body class="dark:bg-zinc-800 text-gray-700 select-none">
+<body>
     <script type="module" src="./main.tsx"></script>
 </body>
 </html>
