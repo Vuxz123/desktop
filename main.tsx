@@ -416,7 +416,6 @@ type AsyncStore<S> = {
 }
 const useConfigStore: AsyncStore<typeof defaultConfigValues> = Object.assign(_useConfigStore, {
     setState: async (partial: Partial<typeof defaultConfigValues>) => {
-        console.log("called?")
         for (const [k, v] of Object.entries(partial)) {
             await db.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", [k, v])
         }
@@ -654,12 +653,12 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
 }
 
 /** Automatically names the thread. */
-const autoName = async (messages: readonly (Pick<PartialMessage, "role" | "content">)[], root: MessageId) => {
+const autoName = async (content: string, root: MessageId) => {
     const res = await complete([
-        ...messages.filter((v) => v.role === "user" || v.role === "system"),
-        { role: "system", content: "What is the topic of the thread above? Answer using only a few words, and refrain from adding any additional comments beyond the topic name." },
+        { role: "user", content: `What is the topic of the following message? Answer using only a few words, and refrain from adding any additional comments beyond the topic name.\n\nMessage:${content}` }
     ])
     if (!res.status) {
+        res.content = res.content.trim()
         let m: RegExpExecArray | null
         if ((m = /^[^"]*topic[^"]*"([^"]+)"[^"]*$/i.exec(res.content)) !== null) {
             // Topic: "test", The topic is "test".
@@ -709,6 +708,16 @@ const ThreadListItem = (props: { i: number }) => {
 
         render(<>
             <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { setRenaming(true) }}>Rename</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={async () => {
+                let node = (await db.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [id])).at(-1)
+                while (node) {
+                    if (node.role === "user") {
+                        autoName(node.content, id!)
+                        break
+                    }
+                    node = (await db.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [node.id])).at(-1)
+                }
+            }}>Regenerate thread name</button>
             <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={async () => {
                 await db.execute("DELETE FROM message WHERE id = ?", [id])
                 await reload(useStore.getState().visibleMessages.map((v) => v.id))
@@ -1023,8 +1032,8 @@ Browsing: disabled`, status: 0
         autoFitTextareaHeight()
         const assistant = await completeAndAppend([...s.visibleMessages, { id: user, ...userMessage }])
         if (assistant.status === 0 && isFirstCompletion) {
-            // do not await
-            autoName([userMessage, assistant], root)
+            // do not wait
+            autoName(userMessage.content, root)
         }
     }
 
