@@ -18,8 +18,16 @@ use tauri::api::cli::ArgData;
 use tauri::api::http::{Body, ClientBuilder, FormBody, FormPart, HttpRequestBuilder, ResponseType};
 use tempfile::NamedTempFile;
 
-static mut APP_DATA_DIR: Option<PathBuf> = None;
+static mut DB_PATH: Option<PathBuf> = None;
 static AUDIO_PLAYBACK_COUNTER: AtomicI64 = AtomicI64::new(0);
+
+async fn connect_db() -> Result<sqlx::SqliteConnection, Box<dyn std::error::Error>> {
+    Ok(sqlx::SqliteConnection::connect(&format!(
+        "sqlite://{}?mode=rwc", // rwc = create file if not exists
+        unsafe { DB_PATH.clone() }.unwrap().to_str().unwrap()
+    ))
+    .await?)
+}
 
 fn main() {
     tauri::Builder::default()
@@ -39,18 +47,18 @@ fn main() {
                 }
                 Err(_) => {}
             }
-            let app_data_dir_local = Some(
+            let db_path = Some(
                 tauri::api::path::resolve_path(
                     &context.config(),
                     context.package_info(),
                     &tauri::Env::default(),
-                    "db/tauri.sqlite",
-                    Some(tauri::api::path::BaseDirectory::AppData),
+                    "chatgpt_tauri.db",
+                    Some(tauri::api::path::BaseDirectory::AppConfig),
                 )
                 .unwrap(),
             );
             unsafe {
-                APP_DATA_DIR = app_data_dir_local;
+                DB_PATH = db_path;
             }
             Ok(())
         })
@@ -70,19 +78,8 @@ fn main() {
             get_chat_completion,
             stop_audio,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|_app_handle, event| match event {
-            tauri::RunEvent::ExitRequested { .. } => {
-                let audio_cache_db_path = unsafe { APP_DATA_DIR.clone() }
-                    .unwrap()
-                    .join("audioCache.sqlite");
-                if audio_cache_db_path.exists() {
-                    std::fs::remove_file(audio_cache_db_path).unwrap();
-                }
-            }
-            _ => {}
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 #[tauri::command]
@@ -143,9 +140,11 @@ async fn play_audio(data: Vec<u8>, precedence: i64) -> std::io::Result<()> {
 }
 
 async fn azure_text_to_speech_request(
+    message_id: Option<i64>,
     region: String,
     resource_key: String,
     ssml: String,
+    no_cache: bool,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // fetch in @tauri-apps/api/http in frontend seems not to support binary response body, and the webview didn't play the audio even if it is tied to a mouse event.
     let request = HttpRequestBuilder::new(
@@ -172,31 +171,40 @@ async fn azure_text_to_speech_request(
     }
     let data = response.bytes().await?.data;
 
-    let mut conn = sqlx::SqliteConnection::connect(
-        unsafe { APP_DATA_DIR.clone() }
-            .unwrap()
-            .join("audioCache.sqlite")
-            .to_str()
-            .unwrap(),
-    )
-    .await?;
-    sqlx::query("INSERT OR REPLACE INTO audioCache (ssml, audio) VALUES (?, ?)")
+    let mut conn = connect_db().await?;
+
+    if let Some(message_id) = message_id {
+        sqlx::query(
+            "INSERT OR REPLACE INTO messageTTSCache (messageId, ssml, audio) VALUES (?, ?, ?)",
+        )
+        .bind(message_id)
         .bind(ssml)
         .bind(data.clone())
         .execute(&mut conn)
         .await?;
+    } else {
+        sqlx::query("INSERT OR REPLACE INTO systemTTSCache (ssml, audio) VALUES (?, ?)")
+            .bind(ssml)
+            .bind(data.clone())
+            .execute(&mut conn)
+            .await?;
+    }
 
     Ok(data)
 }
 
-#[tauri::command]
-async fn speak_azure(
+async fn speak_azure_inner(
+    message_id: Option<i64>,
     region: String,
     resource_key: String,
     ssml: String,
     beep_volume: f32,
     pre_fetch: bool,
-) -> (bool, String) {
+    no_cache: bool,
+) -> Result<String, Box<dyn std::error::Error>> {
+    if no_cache && pre_fetch {
+        return Ok("".to_owned());
+    }
     let precedence = if pre_fetch {
         0
     } else {
@@ -204,28 +212,24 @@ async fn speak_azure(
     };
 
     {
-        std::fs::create_dir_all(unsafe { APP_DATA_DIR.clone().unwrap() }).unwrap();
-        let mut conn = sqlx::SqliteConnection::connect(&format!(
-            "sqlite://{}?mode=rwc",
-            unsafe { APP_DATA_DIR.clone() }
-                .unwrap()
-                .join("audioCache.sqlite")
-                .to_str()
-                .unwrap()
-        ))
-        .await
-        .unwrap();
-        sqlx::query("CREATE TABLE IF NOT EXISTS audioCache (ssml TEXT NOT NULL PRIMARY KEY, audio BLOB NOT NULL) STRICT").execute(&mut conn).await.unwrap();
-        let cached_audio = sqlx::query("SELECT audio FROM audioCache WHERE ssml = ?")
-            .bind(ssml.clone())
-            .fetch_optional(&mut conn)
-            .await
-            .unwrap();
+        let mut conn = connect_db().await?;
+        let cached_audio = sqlx::query(
+            "
+SELECT audio FROM messageTTSCache WHERE ssml = ?1
+UNION
+SELECT audio FROM systemTTSCache WHERE ssml = ?1
+LIMIT 1
+",
+        )
+        .bind(message_id)
+        .bind(ssml.clone())
+        .fetch_optional(&mut conn)
+        .await?;
         if let Some(data) = cached_audio {
             if !pre_fetch {
-                play_audio(data.get("audio"), precedence).await.unwrap();
+                play_audio(data.get("audio"), precedence).await?;
             }
-            return (true, "".to_owned());
+            return Ok("".to_owned());
         }
     }
 
@@ -247,19 +251,47 @@ async fn speak_azure(
         }
     });
 
-    let data = match azure_text_to_speech_request(region, resource_key, ssml).await {
+    let data = match azure_text_to_speech_request(message_id, region, resource_key, ssml, no_cache)
+        .await
+    {
         Err(err) => {
-            sender.send(()).unwrap();
-            return (true, err.to_string());
+            sender.send(())?;
+            return Err(err);
         }
         Ok(data) => data,
     };
 
-    sender.send(()).unwrap();
+    sender.send(())?;
     if !pre_fetch {
-        play_audio(data, precedence).await.unwrap();
+        play_audio(data, precedence).await?;
     }
-    (true, "".to_owned())
+    Ok("".to_owned())
+}
+
+#[tauri::command]
+async fn speak_azure(
+    message_id: Option<i64>,
+    region: String,
+    resource_key: String,
+    ssml: String,
+    beep_volume: f32,
+    pre_fetch: bool,
+    no_cache: bool,
+) -> (bool, String) {
+    match speak_azure_inner(
+        message_id,
+        region,
+        resource_key,
+        ssml,
+        beep_volume,
+        pre_fetch,
+        no_cache,
+    )
+    .await
+    {
+        Ok(value) => (true, value),
+        Err(err) => (false, err.to_string()),
+    }
 }
 
 /// https://github.com/rust-lang/rust/issues/72353#issuecomment-1093729062

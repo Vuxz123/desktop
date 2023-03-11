@@ -69,19 +69,19 @@ class TextToSpeechQueue {
     }
 
     /** Clears the queue and enqueues the text. */
-    async speakText(content: string | null) {
+    async speakText(content: string | null, messageIdForDeletion: MessageId | null, noCache = false) {
         await this.cancel()
         this.textId = null
-        await (await this.prepare(content))?.()
+        await (await this.prepare(content, messageIdForDeletion, noCache))?.()
     }
 
     /** Enqueues a text if the given textId is the same as the previous one. */
-    async pushSegment(textId: number, content: string) {
+    async pushSegment(textId: number, content: string, messageIdForDeletion: MessageId | null) {
         if (this.textId !== textId) {
             this.queue.length = 0
             this.textId = textId
         }
-        const speak = this.prepare(content)
+        const speak = this.prepare(content, messageIdForDeletion)
         this.queue.push(async () => {
             await (await speak)?.()
         })
@@ -98,7 +98,8 @@ class TextToSpeechQueue {
         }
     }
 
-    private async prepare(content: string | null): Promise<(() => Promise<void>) | void> {
+    private async prepare(content: string | null, messageIdForDeletion: MessageId | null, noCache: boolean = false): Promise<(() => Promise<void>) | void> {
+        if (content?.trim() === "") { return }
         const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
         switch (ttsBackend) {
             case "off": {
@@ -127,20 +128,24 @@ class TextToSpeechQueue {
                 const ssml = `<speak version='1.0' xml:lang='${azureTTSLang}'><voice xml:lang='${azureTTSLang}' name='${azureTTSVoice}'>${(content ?? "Microsoft Speech Service Text-to-Speech API").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</voice></speak>`
                 await db.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, ssml.length])
                 const res = await invoke<[ok: boolean, body: string]>("speak_azure", {
+                    messageId: messageIdForDeletion,
                     region: azureTTSRegion,
                     resourceKey: azureTTSResourceKey,
                     ssml,
                     beepVolume: 0,
                     preFetch: true,
+                    noCache,
                 })
                 if (!res[0]) { console.error(res[1]); return }
                 return async () => {
                     await invoke<[ok: boolean, body: string]>("speak_azure", {
+                        messageId: messageIdForDeletion,
                         region: azureTTSRegion,
                         resourceKey: azureTTSResourceKey,
                         ssml,
                         beepVolume: 0,
                         preFetch: false,
+                        noCache,
                     })
                 }
             } default: {
@@ -273,7 +278,7 @@ const Message = (props: { depth: number }) => {
                         if (content) {
                             const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
                             const splitLines = new SplitLines((line) => {
-                                useStore.getState().ttsQueue.pushSegment(id, line)
+                                useStore.getState().ttsQueue.pushSegment(id, line, id)
                             })
                             splitLines.add(content)
                             splitLines.end()
@@ -583,7 +588,7 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
     try {
         const ttsId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         const splitLines = new SplitLines((line) => {
-            useStore.getState().ttsQueue.pushSegment(ttsId, line)
+            useStore.getState().ttsQueue.pushSegment(ttsId, line, id)
         })
         const newMessage = await complete(messages, async (content, delta) => {
             splitLines.add(delta)
@@ -593,7 +598,7 @@ const completeAndAppend = async (messages: readonly ({ id: number } & PartialMes
         splitLines.end()
         if (newMessage.status === 1) {
             await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
-            useStore.getState().ttsQueue.speakText(newMessage.content + `\nPress ${isMac ? "command" : "control"} plus shift plus R to retry.`)
+            useStore.getState().ttsQueue.speakText(newMessage.content + `\nPress ${isMac ? "command" : "control"} plus shift plus R to retry.`, id)
         } else {
             await db.execute("UPDATE message SET role = ?, status = ? WHERE id = ?", [newMessage.role, newMessage.status, id])
         }
@@ -776,7 +781,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     const openThread = (id: MessageId) => {
         reload([id])
         focusInput()
-        if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread") }
+        if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", id) }
         document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({ behavior: "smooth" })
     }
 
@@ -816,7 +821,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             }
         }
 
-        const speakIfAudioFeedbackIsEnabled = (content: string) => { if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(content) } }
+        const speakAudioFeedback = (content: string) => { if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(content, null) } }
 
         if (ev.code === "Escape") {
             ev.preventDefault()
@@ -842,7 +847,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 [`Show bookmarks`, `${ctrlStr} plus shift plus O`],
                 [`Start or Stop recording`, `${ctrlStr} plus shift plus V`],
             ]
-            useStore.getState().ttsQueue.speakText(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "))
+            useStore.getState().ttsQueue.speakText(keybindings.map((v) => `${v[1]}: ${v[0]}`).join(". "), null)
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
             ev.preventDefault()
             if (useStore.getState().listening) {
@@ -856,9 +861,9 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         } else if (ctrlOrCmd(ev) && ev.code === "KeyU") {
             // Speak texts in the input box
             ev.preventDefault()
-            speakIfAudioFeedbackIsEnabled(textareaRef.current!.value)
+            useStore.getState().ttsQueue.speakText(textareaRef.current!.value, null, true)
         } else if (ctrlOrCmd(ev) && ev.code === "KeyL") {
-            // Focus hte input box
+            // Focus the input box
             ev.preventDefault()
             focusInput()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyN") {
@@ -876,33 +881,34 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             ev.preventDefault()
             const visibleMessages = useStore.getState().visibleMessages
             if (visibleMessages.length === 0) {
-                speakIfAudioFeedbackIsEnabled("No messages in the thread.")
+                speakAudioFeedback("No messages in the thread.")
             } else {
                 const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                const message = visibleMessages.at(-1)!
                 const splitLines = new SplitLines((line) => {
-                    useStore.getState().ttsQueue.pushSegment(id, line)
+                    useStore.getState().ttsQueue.pushSegment(id, line, message.id)
                 })
-                splitLines.add(visibleMessages.at(-1)!.content)
+                splitLines.add(message.content)
                 splitLines.end()
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyR") {
             // Regenerate response
             ev.preventDefault()
-            regenerateReponse()
+            regenerateResponse()
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "Tab") {
             // Move to the newer thread
             ev.preventDefault()
             const s = useStore.getState()
             if (s.visibleMessages.length === 0) {
-                speakIfAudioFeedbackIsEnabled("There are no newer threads.")
+                speakAudioFeedback("There are no newer threads.")
             } else {
                 const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
                 if (i === -1) {
-                    speakIfAudioFeedbackIsEnabled("Something went wrong.")
+                    speakAudioFeedback("Something went wrong.")
                 } else if (i <= 0) {
                     reload([])
                     focusInput()
-                    speakIfAudioFeedbackIsEnabled("new thread")
+                    speakAudioFeedback("new thread")
                 } else {
                     openThread(s.threads[i - 1]!.id)
                 }
@@ -912,15 +918,15 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             ev.preventDefault()
             const s = useStore.getState()
             if (s.threads.length === 0) {
-                speakIfAudioFeedbackIsEnabled("There are no threads.")
+                speakAudioFeedback("There are no threads.")
             } else if (s.visibleMessages.length === 0) {
                 openThread(s.threads[0]!.id)
             } else {
                 const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
                 if (i === -1) {
-                    speakIfAudioFeedbackIsEnabled("Something went wrong.")
+                    speakAudioFeedback("Something went wrong.")
                 } else if (i >= s.threads.length - 1) {
-                    speakIfAudioFeedbackIsEnabled("There are no older threads.")
+                    speakAudioFeedback("There are no older threads.")
                 } else {
                     openThread(s.threads[i + 1]!.id)
                 }
@@ -1431,7 +1437,7 @@ const TextToSpeechDialog = () => {
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Output Device</h2>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
-            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { useStore.getState().ttsQueue.speakText(null) }}>Test text-to-speech</button>
+            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { useStore.getState().ttsQueue.speakText(null, null) }}>Test text-to-speech</button>
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
             <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as any }) }}>
                 <option value="off">Disabled</option>
@@ -1639,7 +1645,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
     </dialog>
 }
 
-const regenerateReponse = async () => {
+const regenerateResponse = async () => {
     const s = useStore.getState()
     await completeAndAppend(s.visibleMessages.slice(0, -1))
 }
@@ -1661,7 +1667,7 @@ const RegenerateResponse = () => {
         </div>
     }
     if (canRegenerateResponse) {
-        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={regenerateReponse}>
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={regenerateResponse}>
             <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                 <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
