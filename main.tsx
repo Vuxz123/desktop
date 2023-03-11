@@ -231,6 +231,16 @@ const Message = (props: { depth: number }) => {
     const ref = useRef<HTMLDivElement>(null)
     const isResponseInIntegratedTerminal = useStore((s) => role === "assistant" && s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name === "Integrated Terminal")
 
+    const autoFitTextareaHeight = () => {
+        if (!textareaRef.current) { return }
+        // Auto-fit to the content https://stackoverflow.com/a/48460773/10710682
+        textareaRef.current!.style.height = ""
+        textareaRef.current!.style.height = Math.min(window.innerHeight / 2, textareaRef.current!.scrollHeight) + "px"
+    }
+    useEffect(() => {
+        autoFitTextareaHeight()
+    }, [editing, textareaRef])
+
     let processedContent = content
     if (isResponseInIntegratedTerminal && content?.trim()) {
         if (content?.trim()?.includes("```")) {
@@ -345,11 +355,7 @@ const Message = (props: { depth: number }) => {
                                 saveAndSubmit()
                             }
                         }}
-                        onInput={(ev) => {
-                            // Auto-fit to the content https://stackoverflow.com/a/48460773/10710682
-                            ev.currentTarget!.style.height = ""
-                            ev.currentTarget!.style.height = Math.min(window.innerHeight / 2, ev.currentTarget!.scrollHeight) + "px"
-                        }}></textarea>
+                        onInput={autoFitTextareaHeight}></textarea>
                     <div class="text-center">
                         <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={saveAndSubmit}>Save & Submit</button>
                         <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { setEditing(false) }}>Cancel</button>
@@ -1107,8 +1113,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         let path: MessageId[]
 
         const run = async (shouldAutoName: string | null, tags: string[]) => {
-            textareaRef.current!.value = ""
-            autoFitTextareaHeight()
+            setTextareaValueAndAutoResize(textareaRef.current!, "")
             const assistant = await completeAndAppend(path)
             if (assistant.message.status === 0 && shouldAutoName) {
                 // do not wait
@@ -1121,7 +1126,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             // Generate a shell script if the prompt is prefixed with "/"
             // remove "/"
             const content = textareaRef.current!.value.slice(1)
-            textareaRef.current!.value = ""
+            setTextareaValueAndAutoResize(textareaRef.current!, "")
 
             const thread = s.threads.find((v) => v.name === "Integrated Terminal")
             if (!thread) {
@@ -1527,6 +1532,11 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
             </>}
         </div>
     </div>
+}
+
+const setTextareaValueAndAutoResize = (textarea: HTMLTextAreaElement, value: string) => {
+    textarea.value = value
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }))
 }
 
 const PreferencesDialog = () => {
