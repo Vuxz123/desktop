@@ -60,6 +60,15 @@
     }
     li {
         @apply my-2;
+        & > p:first-child {
+            // dirty fix for a rendering issue of <li><p>text<p></li> being rendered as 
+            // ```
+            // -
+            //   text
+            // ```
+            // only when the content is rendered for the first time.
+            @apply inline;
+        }
     }
 }
 
