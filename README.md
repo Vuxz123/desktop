@@ -40,3 +40,6 @@ See https://github.com/chatgptui/desktop/wiki/Building-from-Source
 - https://github.com/Loeffeldude/my-chat-gpt
 - https://www.typingmind.com/
 - https://github.com/lencx/ChatGPT
+
+# Disclaimer
+This is an unofficial client for the ChatGPT API. All trademarks, registered trademarks, product names and company names or logos mentioned on this app are the property of their respective owners.
