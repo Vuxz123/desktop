@@ -1611,7 +1611,7 @@ const PreferencesDialog = () => {
 Google: https://www.google.com/search?q={searchTerms}
 StackOverflow: https://stackoverflow.com/search?q={searchTerms}
 MDN: https://developer.mozilla.org/en-US/search?q={searchTerms}
-What's the URL for Bing?`)
+What's the template URL for Bing?`)
                                 document.querySelector<HTMLDialogElement>("dialog[open]")?.close()
                             }}>help</button>
                         </td>
