@@ -1049,7 +1049,7 @@ Browsing: disabled`, status: 0
     const lastMessageRole = useStore((s) => s.visibleMessages.findLast((v) => v.role === "user" || v.role === "assistant")?.role)
 
     useEffect(() => {
-        appWindow.setTitle(`ChatGPT: ${threadName}`)
+        appWindow.setTitle(`ChatGPT - ${threadName}`)
     }, [threadName])
 
     return <>
