@@ -522,6 +522,9 @@ export const api = {
     // "object.action"
     "bookmarkDialog.show": () => { useStore.getState().openBookmarkDialog() },
     "preferencesDialog.show": () => { document.querySelector<HTMLDialogElement>("#preferences")?.showModal() },
+    "usageAndBudgetDialog.show": () => { useStore.getState().openUsageDialog() },
+    "textToSpeechConfigurationDialog.show": () => { document.querySelector<HTMLDialogElement>("#text-to-speech")?.showModal() },
+    "speechToTextConfigurationDialog.show": () => { document.querySelector<HTMLDialogElement>("#speech-to-text")!.showModal() },
     "newChatMessageTextarea.focus": async (audioFeedback = true) => {
         const textarea = getNewChatMessageTextarea()
         if (!textarea) { return } // TODO:

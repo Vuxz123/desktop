@@ -536,10 +536,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 <hr class="border-t border-t-zinc-600"></hr>
 
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={async (ev) => {
-                        ev.preventDefault()
-                        useStore.getState().openBookmarkDialog()
-                    }}>
+                    onClick={async (ev) => { ev.preventDefault(); api["bookmarkDialog.show"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2"></path>
@@ -547,10 +544,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     Bookmarks
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={async (ev) => {
-                        ev.preventDefault()
-                        useStore.getState().openUsageDialog()
-                    }}>
+                    onClick={async (ev) => { ev.preventDefault(); api["usageAndBudgetDialog.show"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-coins inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 14c0 1.657 2.686 3 6 3s6 -1.343 6 -3s-2.686 -3 -6 -3s-6 1.343 -6 3z"></path>
@@ -574,10 +568,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     OpenAI API key
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => {
-                        ev.preventDefault()
-                        document.querySelector<HTMLDialogElement>("#text-to-speech")?.showModal()
-                    }}>
+                    onClick={(ev) => { ev.preventDefault(); api["textToSpeechConfigurationDialog.show"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-volume inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M15 8a5 5 0 0 1 0 8"></path>
@@ -587,10 +578,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     Text-to-speech / Audio feedback
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => {
-                        ev.preventDefault()
-                        document.querySelector<HTMLDialogElement>("#speech-to-text")!.showModal()
-                    }}>
+                    onClick={(ev) => { ev.preventDefault(); api["speechToTextConfigurationDialog.show"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z"></path>
@@ -601,10 +589,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     Speech-to-text
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => {
-                        ev.preventDefault()
-                        document.querySelector<HTMLDialogElement>("#preferences")?.showModal()
-                    }}>
+                    onClick={(ev) => { ev.preventDefault(); api["preferencesDialog.show"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-settings inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"></path>
