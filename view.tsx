@@ -1013,7 +1013,7 @@ const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
         loop()
         return () => { stop = true }
     }, [props.textareaRef])
-    return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mb-2 text-zinc-600 rounded">{count}</span>
+    return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mb-2 text-zinc-600 rounded cursor-pointer" onClick={() => { open("https://platform.openai.com/tokenizer") }}>{count}</span>
 }
 
 type AzureVoiceInfo = {
