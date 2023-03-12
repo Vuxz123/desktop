@@ -124,9 +124,9 @@ const MessageRenderer = (props: { depth: number }) => {
 
                     {/* ‹　2 / 3 › */}
                     {numSiblings > 1 && <>
-                        <span class={"inline-block px-2 ml-2" + (hasPreviousSibling ? " cursor-pointer" : "")} onClick={() => { api["message.showOlderVersion"](id!) }}>‹</span>
+                        <span class={"inline-block px-2 ml-2" + (hasPreviousSibling ? " cursor-pointer" : "")} onClick={() => { api["message.olderVersion"](id!) }}>‹</span>
                         {siblingPosition + 1}<span class="mx-1">/</span>{numSiblings}
-                        <span class={"inline-block px-2" + (hasNextSibling ? " cursor-pointer" : "")} onClick={() => { api["message.showNewerVersion"](id!) }}>›</span>
+                        <span class={"inline-block px-2" + (hasNextSibling ? " cursor-pointer" : "")} onClick={() => { api["message.newerVersion"](id!) }}>›</span>
                     </>}
                 </span>
 
@@ -149,7 +149,7 @@ const MessageRenderer = (props: { depth: number }) => {
 
                 {/* Search engine */}
                 {role === "user" && <span title="Search the web for this message" class="text-zinc-600 absolute top-1 right-16 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => { api["message.queryContentWithDefaultSearchEngine"](id!) }}>
+                    onClick={() => { api["message.google"](id!) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-world-search inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M21 12a9 9 0 1 0 -9 9"></path>
@@ -164,7 +164,7 @@ const MessageRenderer = (props: { depth: number }) => {
 
                 {/* Edit */}
                 {role === "user" && <span title="Edit content" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => { api["message.showMessageEditTextarea"](id!) }}>
+                    onClick={() => { api["message.startEdit"](id!) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-edit inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"></path>
@@ -205,13 +205,13 @@ const MessageRenderer = (props: { depth: number }) => {
                         onKeyDown={(ev) => {
                             if (ctrlOrCmd(ev) && ev.code === "Enter") {
                                 ev.preventDefault()
-                                api["messageEditTextarea.submit"](id!)
+                                api["editInput.submit"](id!)
                             }
                         }}
                         onInput={autoFitTextareaHeight}></textarea>
                     <div class="text-center">
-                        <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { api["messageEditTextarea.submit"](id!) }}>Save & Submit</button>
-                        <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { api["messageEditTextarea.cancelEditing"](id!) }}>Cancel</button>
+                        <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { api["editInput.submit"](id!) }}>Save & Submit</button>
+                        <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { api["editInput.cancel"](id!) }}>Cancel</button>
                     </div>
                 </>}
 
@@ -276,9 +276,9 @@ const ThreadListItem = (props: { i: number }) => {
         const dialog = document.querySelector<HTMLDialogElement>("#contextmenu")!
 
         render(<>
-            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["chatThread.showThreadRenameTextareaAndFocusIt"](id!) }}>Rename</button>
-            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["chatThread.generateThreadName"](id!) }}>Regenerate thread name</button>
-            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["chatThread.delete"](id!) }}>Delete</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["thread.editTitle"](id!) }}>Rename</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["thread.autoTitle"](id!) }}>Regenerate thread name</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["thread.delete"](id!) }}>Delete</button>
         </>, dialog)
 
         // Set left and top before calling showModal() to prevent scrolling
@@ -293,7 +293,7 @@ const ThreadListItem = (props: { i: number }) => {
 
     return <div class={"pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative text-ellipsis pr-10" + (active ? " bg-zinc-700" : " hover:bg-zinc-600")}
         data-thread-id={id}
-        onClick={() => { api["chatThread.open"](id!) }}
+        onClick={() => { api["thread.open"](id!) }}
         onContextMenu={onContextMenu}>
         {name !== "Integrated Terminal" && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-message inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -317,7 +317,7 @@ const ThreadListItem = (props: { i: number }) => {
                 }
             }}
             onChange={async (ev) => { await db.current.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [id, ev.currentTarget.value]) }}
-            onBlur={async () => { api["chatThread.closeThreadRenameTextarea"]() }}
+            onBlur={async () => { api["thread.confirmTitle"]() }}
             onClick={(ev) => { ev.stopImmediatePropagation() }}></input>}
         {active && !renaming && <svg xmlns="http://www.w3.org/2000/svg"
             class="icon icon-tabler icon-tabler-dots absolute right-4 top-0 bottom-0 my-auto p-1 hover:bg-zinc-500 rounded-lg"
@@ -349,9 +349,9 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     const isResponseInIntegratedTerminal = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name === "Integrated Terminal" && s.visibleMessages.at(-1)?.role === "assistant")
 
     useEffect(() => {
-        api["newChatMessageTextarea.focus"]()
-        if (props.send) { api["newChatMessageTextarea.submit"]() }
-        if (props.voiceInput) { api["speechToText.start"]() }
+        api["messageInput.focus"]()
+        if (props.send) { api["messageInput.submit"]() }
+        if (props.voiceInput) { api["microphone.start"]() }
     }, [])
 
     // undo/redo in textarea
@@ -387,11 +387,11 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             setIsWaitingNextKeyPress(false)
             if (ev.key === "0") {
                 ev.preventDefault()
-                api["activeChatThread.foldAll"]()
+                api["activeThread.foldAll"]()
                 return
             } else if (ev.code === "KeyJ") {
                 ev.preventDefault()
-                api["activeChatThread.unfoldAll"]()
+                api["activeThread.unfoldAll"]()
                 return
             }
         }
@@ -424,34 +424,34 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
             ev.preventDefault()
             if (useStore.getState().listening) {
-                api["speechToText.stop"]
+                api["microphone.stop"]
             } else {
-                api["speechToText.start"]
+                api["microphone.start"]
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyO") {
             ev.preventDefault()
-            api["bookmarkDialog.show"]()
+            api["dialog.bookmark"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyU") {
             ev.preventDefault()
-            api["activeTextarea.speak"]()
+            api["messageInput.speak"]()
         } else if (ctrlOrCmd(ev) && ev.key === "/") {
             ev.preventDefault()
-            api["integratedTerminal.open"]()
+            api["console.open"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyL") {
             ev.preventDefault()
-            api["newChatMessageTextarea.focus"]()
+            api["messageInput.focus"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyN") {
             ev.preventDefault()
-            api["chatThreadNavigation.moveToNewThread"]()
+            api["thread.new"]()
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyS") {
             ev.preventDefault()
-            api["assistant.stopGeneratingResponse"]()
+            api["assistant.abortResponse"]()
         } else if (ctrlOrCmd(ev) && ev.key === ",") {
             ev.preventDefault()
-            api["preferencesDialog.show"]()
+            api["dialog.preferences"]()
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "KeyR") {
             ev.preventDefault()
-            const id = api["activeChatThread.getIdOfLatestMessageByAssistant"]()
+            const id = api["activeThread.lastAssistantMessage"]()
             if (id !== null) {
                 api["message.speak"](id)
             }
@@ -461,21 +461,21 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             api["assistant.regenerateResponse"]()
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "Tab") {
             ev.preventDefault()
-            api["chatThreadNavigation.moveToNewerThread"]()
+            api["thread.next"]()
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "Tab") {
             ev.preventDefault()
-            api["chatThreadNavigation.moveToOlderThread"]()
+            api["thread.previous"]()
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyE") {
             ev.preventDefault()
             api["sideBar.show"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyB") {
             ev.preventDefault()
-            api["sideBar.toggleVisibility"]
+            api["sideBar.toggle"]
         } else if (ctrlOrCmd(ev) && ev.code === "KeyG") {
             ev.preventDefault()
-            const id = api["activeChatThread.getIdOfLatestMessageByUser"]()
+            const id = api["activeThread.lastUserMessage"]()
             if (id !== null) {
-                api["message.queryContentWithDefaultSearchEngine"](id)
+                api["message.google"](id)
             }
         } else if (ctrlOrCmd(ev) && ev.code === "KeyK") {
             ev.preventDefault()
@@ -519,7 +519,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     </svg>
                 </div>}
                 <div class="pl-4 pr-16 pb-2 pt-4">
-                    <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-700" : " hover:bg-zinc-700 cursor-pointer")} onClick={() => { api["chatThreadNavigation.moveToNewThread"]() }}>
+                    <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-700" : " hover:bg-zinc-700 cursor-pointer")} onClick={() => { api["thread.new"]() }}>
                         <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-plus inline mr-4 [transform:translateY(-2px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                             <path d="M12 5l0 14"></path>
@@ -536,7 +536,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 <hr class="border-t border-t-zinc-600"></hr>
 
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={async (ev) => { ev.preventDefault(); api["bookmarkDialog.show"]() }}>
+                    onClick={async (ev) => { ev.preventDefault(); api["dialog.bookmark"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2"></path>
@@ -544,7 +544,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     Bookmarks
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={async (ev) => { ev.preventDefault(); api["usageAndBudgetDialog.show"]() }}>
+                    onClick={async (ev) => { ev.preventDefault(); api["dialog.budget"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-coins inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 14c0 1.657 2.686 3 6 3s6 -1.343 6 -3s-2.686 -3 -6 -3s-6 1.343 -6 3z"></path>
@@ -568,7 +568,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     OpenAI API key
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => { ev.preventDefault(); api["textToSpeechConfigurationDialog.show"]() }}>
+                    onClick={(ev) => { ev.preventDefault(); api["dialog.speaker"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-volume inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M15 8a5 5 0 0 1 0 8"></path>
@@ -578,7 +578,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     Text-to-speech / Audio feedback
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => { ev.preventDefault(); api["speechToTextConfigurationDialog.show"]() }}>
+                    onClick={(ev) => { ev.preventDefault(); api["dialog.microphone"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z"></path>
@@ -589,7 +589,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     Speech-to-text
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => { ev.preventDefault(); api["preferencesDialog.show"]() }}>
+                    onClick={(ev) => { ev.preventDefault(); api["dialog.preferences"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-settings inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"></path>
@@ -626,7 +626,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                         {isResponseInIntegratedTerminal && <>
                             <div class={"flex-1 flex " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ")}>
                                 <div class={"shadow-light text-center bg-zinc-100 py-3 relative cursor-pointer hover:bg-zinc-200 [&:has(svg:hover)]:bg-zinc-100 text-zinc-600 dark:shadow-dark rounded-lg bg-zinc100 flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}
-                                    onClick={() => { api["integratedTerminal.runLatestCodeBlock"]() }}>
+                                    onClick={() => { api["console.runLatest"]() }}>
                                     Execute
                                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute top-0 bottom-0 my-auto right-0 p-2 hover:bg-zinc-300 dark:stroke-slate-100 rounded" width="40" height="40" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
                                         onClick={(ev) => {
@@ -659,14 +659,14 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                                             ctrlOrCmd(ev) && ev.code === "Enter"
                                         ) {
                                             ev.preventDefault()
-                                            api["newChatMessageTextarea.submit"]()
+                                            api["messageInput.submit"]()
                                             return
                                         }
                                     }}
                                     onInput={autoFitTextareaHeight}></textarea>
                                 <div
                                     class={"absolute bottom-2 right-5 cursor-pointer p-1"}
-                                    onClick={() => { api["newChatMessageTextarea.submit"]() }}>
+                                    onClick={() => { api["messageInput.submit"]() }}>
                                     {/* tabler-icons, MIT license, Copyright (c) 2020-2023 Paweł Kuna */}
                                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-send dark:stroke-slate-100" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.3" stroke="#000000" fill="none" stroke-linecap="round" stroke-linejoin="round">
                                         <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -858,8 +858,8 @@ const PreferencesDialog = () => {
                                 }}
                                 placeholder={`https://www.google.com/search?q={searchTerms}`}></input>
                             <button class="ml-1 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={async () => {
-                                await api["chatThreadNavigation.moveToNewThread"]()
-                                await api["newChatMessageTextarea.setValue"](`\
+                                await api["thread.new"]()
+                                await api["messageInput.set"](`\
 Google: https://www.google.com/search?q={searchTerms}
 StackOverflow: https://stackoverflow.com/search?q={searchTerms}
 MDN: https://developer.mozilla.org/en-US/search?q={searchTerms}

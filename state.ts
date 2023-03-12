@@ -259,7 +259,7 @@ let _useStore = create<State>()(() => ({
 if (import.meta.env.DEV) { window.useStore = _useStore = (window.useStore ?? _useStore) }
 export const useStore = _useStore
 
-const getNewChatMessageTextarea = () => document.querySelector<HTMLTextAreaElement>("#userPromptTextarea")
+const getChatInput = () => document.querySelector<HTMLTextAreaElement>("#userPromptTextarea")
 const speakIfAudioFeedbackIsEnabled = (content: string) => { if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(content, null) } }
 const setTextareaValueAndAutoResize = (textarea: HTMLTextAreaElement, value: string) => {
     textarea.value = value
@@ -520,41 +520,41 @@ const findParents = async (id: MessageId) => {
 
 export const api = {
     // "object.action"
-    "bookmarkDialog.show": () => { useStore.getState().openBookmarkDialog() },
-    "preferencesDialog.show": () => { document.querySelector<HTMLDialogElement>("#preferences")?.showModal() },
-    "usageAndBudgetDialog.show": () => { useStore.getState().openUsageDialog() },
-    "textToSpeechConfigurationDialog.show": () => { document.querySelector<HTMLDialogElement>("#text-to-speech")?.showModal() },
-    "speechToTextConfigurationDialog.show": () => { document.querySelector<HTMLDialogElement>("#speech-to-text")!.showModal() },
-    "newChatMessageTextarea.focus": async (audioFeedback = true) => {
-        const textarea = getNewChatMessageTextarea()
+    "dialog.bookmark": () => { useStore.getState().openBookmarkDialog() },
+    "dialog.preferences": () => { document.querySelector<HTMLDialogElement>("#preferences")?.showModal() },
+    "dialog.budget": () => { useStore.getState().openUsageDialog() },
+    "dialog.speaker": () => { document.querySelector<HTMLDialogElement>("#text-to-speech")?.showModal() },
+    "dialog.microphone": () => { document.querySelector<HTMLDialogElement>("#speech-to-text")!.showModal() },
+    "messageInput.focus": async (audioFeedback = true) => {
+        const textarea = getChatInput()
         if (!textarea) { return } // TODO:
         textarea.focus()
         textarea.select()
         if (useConfigStore.getState().audioFeedback && audioFeedback) { await invoke("sound_focus_input") }
     },
-    "newChatMessageTextarea.setValue": (value: string) => {
-        const textarea = getNewChatMessageTextarea()
+    "messageInput.set": (value: string) => {
+        const textarea = getChatInput()
         if (!textarea) { return } // TODO:
         setTextareaValueAndAutoResize(textarea, value)
     },
-    "newChatMessageTextarea.getValue": (): string => {
-        const textarea = getNewChatMessageTextarea()
+    "messageInput.get": (): string => {
+        const textarea = getChatInput()
         if (!textarea) { return "" } // TODO:
         return textarea.value
     },
-    "newChatMessageTextarea.submit": async () => {
-        const textarea = getNewChatMessageTextarea()
+    "messageInput.submit": async () => {
+        const textarea = getChatInput()
         if (!textarea || textarea.value === "") { return }
         let s = useStore.getState()
 
         let path: MessageId[]
 
         const run = async (shouldAutoName: boolean) => {
-            api["newChatMessageTextarea.setValue"]("")
+            api["messageInput.set"]("")
             const assistant = await completeAndAppend(path)
             if (assistant.message.status === 0 && shouldAutoName) {
                 // do not wait
-                api["chatThread.generateThreadName"](path[0]!)
+                api["thread.autoTitle"](path[0]!)
             }
             return assistant
         }
@@ -592,7 +592,12 @@ export const api = {
             await run(false)
         }
     },
-    "messageEditTextarea.submit": async (id: MessageId) => {
+    "messageInput.speak": async () => {
+        const textarea = getChatInput()
+        if (!textarea) { return } // todo
+        await useStore.getState().ttsQueue.speakText(textarea.value, null, true)
+    },
+    "editInput.submit": async (id: MessageId) => {
         const textarea = document.querySelector<HTMLTextAreaElement>(`#messageEditTextarea${id}`)
         if (!textarea) { return } // TODO
         const s = useStore.getState()
@@ -602,10 +607,10 @@ export const api = {
         useStore.setState((s) => ({ editing: new Set([...s.editing].filter((v) => v !== id)) }))
         await completeAndAppend(path)
     },
-    "messageEditTextarea.cancelEditing": async (id: MessageId) => {
+    "editInput.cancel": async (id: MessageId) => {
         useStore.setState((s) => ({ editing: new Set([...s.editing].filter((v) => v !== id)) }))
     },
-    "chatThread.generateThreadName": async (id: MessageId) => {
+    "thread.autoTitle": async (id: MessageId) => {
         const firstUserMessage = await (async () => {
             let node = (await db.current.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [id])).at(-1)
             while (node) {
@@ -639,46 +644,31 @@ export const api = {
         }
         console.error(res)
     },
-    "chatThread.delete": async (id: MessageId) => {
+    "thread.delete": async (id: MessageId) => {
         await db.current.execute("DELETE FROM message WHERE id = ?", [id])
         await reload(useStore.getState().visibleMessages.map((v) => v.id))
     },
-    "chatThread.showThreadRenameTextareaAndFocusIt": (id: MessageId) => {
+    "thread.editTitle": (id: MessageId) => {
         useStore.setState({ renamingThread: id })
         // TODO: wait rendering and focusing
     },
-    "chatThread.closeThreadRenameTextarea": async () => {
+    "thread.confirmTitle": async () => {
         useStore.setState({ renamingThread: null })
         await reload(useStore.getState().visibleMessages.map((v) => v.id))
     },
-    "chatThread.open": async (id: MessageId, audioFeedback = false) => {
+    "thread.open": async (id: MessageId, audioFeedback = false) => {
         reload([id])
-        await api["newChatMessageTextarea.focus"](audioFeedback)
+        await api["messageInput.focus"](audioFeedback)
         if (useConfigStore.getState().audioFeedback && audioFeedback) { useStore.getState().ttsQueue.speakText(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", id) }
         // scrollIntoViewIfNeeded is polyfilled by the "element.scrollintoviewifneeded-polyfill" package
         // @ts-ignore
         document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoViewIfNeeded()
     },
-    "activeChatThread.foldAll": () => {
-        const s = useStore.getState()
-        useStore.setState({ folded: new Set([...s.folded, ...s.visibleMessages.filter((v) => v.role === "assistant").map((v) => v.id)]) })
-    },
-    "activeChatThread.unfoldAll": () => {
-        useStore.setState({ folded: new Set() })
-    },
-    "activeChatThread.getIdOfLatestMessageByUser": (): MessageId | null => {
-        const message = useStore.getState().visibleMessages.findLast((v) => v.role === "user")
-        return message?.id ?? null
-    },
-    "activeChatThread.getIdOfLatestMessageByAssistant": (): MessageId | null => {
-        const message = useStore.getState().visibleMessages.findLast((v) => v.role === "assistant")
-        return message?.id ?? null
-    },
-    "chatThreadNavigation.moveToNewThread": async () => {
+    "thread.new": async () => {
         await reload([])
-        await api["newChatMessageTextarea.focus"]()
+        await api["messageInput.focus"]()
     },
-    "chatThreadNavigation.moveToNewerThread": async () => {
+    "thread.next": async () => {
         const s = useStore.getState()
         if (s.visibleMessages.length === 0) {
             speakIfAudioFeedbackIsEnabled("There are no newer threads.")
@@ -688,19 +678,19 @@ export const api = {
                 speakIfAudioFeedbackIsEnabled("Something went wrong.")
             } else if (i <= 0) {
                 await reload([])
-                await api["newChatMessageTextarea.focus"]()
+                await api["messageInput.focus"]()
                 speakIfAudioFeedbackIsEnabled("new thread")
             } else {
-                await api["chatThread.open"](s.threads[i - 1]!.id, true)
+                await api["thread.open"](s.threads[i - 1]!.id, true)
             }
         }
     },
-    "chatThreadNavigation.moveToOlderThread": async () => {
+    "thread.previous": async () => {
         const s = useStore.getState()
         if (s.threads.length === 0) {
             speakIfAudioFeedbackIsEnabled("There are no threads.")
         } else if (s.visibleMessages.length === 0) {
-            await api["chatThread.open"](s.threads[0]!.id, true)
+            await api["thread.open"](s.threads[0]!.id, true)
         } else {
             const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
             if (i === -1) {
@@ -708,22 +698,37 @@ export const api = {
             } else if (i >= s.threads.length - 1) {
                 speakIfAudioFeedbackIsEnabled("There are no older threads.")
             } else {
-                await api["chatThread.open"](s.threads[i + 1]!.id, true)
+                await api["thread.open"](s.threads[i + 1]!.id, true)
             }
         }
     },
+    "activeThread.foldAll": () => {
+        const s = useStore.getState()
+        useStore.setState({ folded: new Set([...s.folded, ...s.visibleMessages.filter((v) => v.role === "assistant").map((v) => v.id)]) })
+    },
+    "activeThread.unfoldAll": () => {
+        useStore.setState({ folded: new Set() })
+    },
+    "activeThread.lastUserMessage": (): MessageId | null => {
+        const message = useStore.getState().visibleMessages.findLast((v) => v.role === "user")
+        return message?.id ?? null
+    },
+    "activeThread.lastAssistantMessage": (): MessageId | null => {
+        const message = useStore.getState().visibleMessages.findLast((v) => v.role === "assistant")
+        return message?.id ?? null
+    },
     "sideBar.show": () => { useStore.setState({ isSideBarOpen: true }) },
     "sideBar.hide": () => { useStore.setState({ isSideBarOpen: false }) },
-    "sideBar.toggleVisibility": () => { useStore.setState((s) => ({ isSideBarOpen: !s.isSideBarOpen })) },
-    "speechToText.start": () => {
+    "sideBar.toggle": () => { useStore.setState((s) => ({ isSideBarOpen: !s.isSideBarOpen })) },
+    "microphone.start": () => {
         const startTime = Date.now()
         useStore.getState().ttsQueue.cancel()
         invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
             .then((res) => {
                 db.current.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
-                api["newChatMessageTextarea.setValue"](api["newChatMessageTextarea.getValue"]() + res as string)
+                api["messageInput.set"](api["messageInput.get"]() + res as string)
                 if (!useConfigStore.getState().editVoiceInputBeforeSending) {
-                    api["newChatMessageTextarea.submit"]()
+                    api["messageInput.submit"]()
                 }
             })
             .finally(() => {
@@ -731,10 +736,10 @@ export const api = {
             })
         useStore.setState({ listening: true })
     },
-    "speechToText.stop": async () => {
+    "microphone.stop": async () => {
         await invoke("stop_listening")
     },
-    "assistant.stopGeneratingResponse": async () => {
+    "assistant.abortResponse": async () => {
         await invoke("stop_all_chat_completions")
         await invoke("cancel_listening")
     },
@@ -742,15 +747,15 @@ export const api = {
         const s = useStore.getState()
         await completeAndAppend(s.visibleMessages.slice(0, -1).map((v) => v.id))
     },
-    "integratedTerminal.open": () => {
-        api["newChatMessageTextarea.focus"]()
-        api["newChatMessageTextarea.setValue"]("/")
-        const textarea = getNewChatMessageTextarea()
+    "console.open": () => {
+        api["messageInput.focus"]()
+        api["messageInput.set"]("/")
+        const textarea = getChatInput()
         if (!textarea) { return } // TODO:
         textarea.selectionStart = 1
         textarea.selectionEnd = 1
     },
-    "integratedTerminal.runLatestCodeBlock": async () => {
+    "console.runLatest": async () => {
         const path = useStore.getState().visibleMessages.map((v) => v.id)
         const { content } = useStore.getState().visibleMessages.at(-1)!
         const p = isWindows
@@ -788,14 +793,7 @@ export const api = {
         })
         await p.spawn()
     },
-    "activeTextarea.speak": async () => {
-        if (document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement) {
-            await useStore.getState().ttsQueue.speakText(document.activeElement.value, null, true)
-        } else {
-            await useStore.getState().ttsQueue.speakText("No textarea is selected.", null, true)
-        }
-    },
-    "message.showOlderVersion": (id: MessageId) => {
+    "message.olderVersion": (id: MessageId) => {
         const s = useStore.getState()
         const depth = s.visibleMessages.findIndex((v) => v.id === id)
         if (depth === -1 || depth === 0) { return } // TODO
@@ -806,7 +804,7 @@ export const api = {
         path[depth] = s.visibleMessages[depth - 1]!.children[siblingPosition - 1]!.id
         reload(path)
     },
-    "message.showNewerVersion": (id: MessageId) => {
+    "message.newerVersion": (id: MessageId) => {
         const s = useStore.getState()
         const depth = s.visibleMessages.findIndex((v) => v.id === id)
         if (depth === -1 || depth === 0) { return } // TODO
@@ -817,7 +815,7 @@ export const api = {
         path[depth] = s.visibleMessages[depth - 1]!.children[siblingPosition + 1]!.id
         reload(path)
     },
-    "message.showMessageEditTextarea": (id: MessageId) => {
+    "message.startEdit": (id: MessageId) => {
         useStore.setState((s) => ({ editing: new Set([...s.editing, id]) }))
         // TODO: wait rendering
     },
@@ -863,7 +861,7 @@ export const api = {
         splitLines.add(message.content)
         splitLines.end()
     },
-    "message.queryContentWithDefaultSearchEngine": async (id: MessageId) => {
+    "message.google": async (id: MessageId) => {
         const records = await db.current.select<{ content: string }[]>("SELECT content FROM message WHERE id = ?", [id])
         if (records.length === 0) { return } // TODO
         open(useConfigStore.getState().searchEngine.replaceAll("{searchTerms}", encodeURIComponent(records[0]!.content)))

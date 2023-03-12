@@ -23,7 +23,7 @@ https://github.com/chatgptui/desktop/releases
 | Start/Stop recording | `Ctrl + Shift + V` |
 | Cancel recording | `Ctrl + Shift + S` |
 | Speak help | `Ctrl + H` |
-| Speak the value in the active textarea | `Ctrl + U` |
+| Speak the value in the chat input | `Ctrl + U` |
 | Speak the last response from the assistant | `Ctrl + R` |
 | Stop speaking | `Escape` |
 | Zoom in | `Ctrl + "+"` |
