@@ -1,161 +1,15 @@
 import { render } from "preact"
 import { Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import ReactMarkdown from "react-markdown"
-import { open, Command } from '@tauri-apps/api/shell'
+import { open } from '@tauri-apps/api/shell'
 import { fetch } from '@tauri-apps/api/http'
-import { create } from "zustand"
-import Database from "tauri-plugin-sql-api"
 import hljs from "highlight.js"
 import { invoke, clipboard } from "@tauri-apps/api"
 import { appWindow } from "@tauri-apps/api/window"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
-// @ts-ignore
-import createTablesSQL from "./create_tables.sql?raw"
-// @ts-ignore
-import getTokenUsageSQL from "./get_token_usage.sql?raw"
-// @ts-ignore
-import findParentsSQL from "./find_parents.sql?raw"
-import PQueue from "p-queue"
-
-/** Database connection. */
-let db: Database
-
-type PartialMessage = {
-    content: string
-    role: "user" | "assistant" | "system" | "root"
-    status: /* loading */-1 | /* success */0 | /* error */1
-}
-
-type Message = PartialMessage & {
-    id: number
-    parent: number | null
-    threadId: number
-    createdAt: string
-    modifiedAt: string
-    note: string | null  // bookmark
-}
-
-class SplitLines {
-    private content = ""
-    constructor(private readonly callback: (line: string) => void) { }
-    add(delta: string) {
-        this.content += delta
-        while (true) {
-            const i = this.content.indexOf("\n")
-            if (i === -1) { break }
-            this.callback(this.content.slice(0, i))
-            this.content = this.content.slice(i + 1)
-        }
-    }
-    end() {
-        this.callback(this.content)
-        this.content = ""
-    }
-}
-
-class TextToSpeechQueue {
-    private readonly preparationQueue = new PQueue({ concurrency: 1 })
-    private readonly audioQueue = new PQueue({ concurrency: 1 })
-    private textId: number | null = null
-
-    /** Clears the queue. */
-    async cancel() {
-        await invoke("stop_audio")
-        if (window.speechSynthesis) {
-            try { window.speechSynthesis.cancel() } catch { }
-        }
-        this.preparationQueue.clear()
-        this.audioQueue.clear()
-    }
-
-    /** Clears the queue and enqueues the text. */
-    async speakText(content: string | null, messageIdForDeletion: MessageId | null, noCache = false) {
-        await this.cancel()
-        this.textId = null
-        await (await this.prepare(content, messageIdForDeletion, noCache))?.()
-    }
-
-    /** Enqueues a text if the given textId is the same as the previous one. */
-    async pushSegment(textId: number, content: string, messageIdForDeletion: MessageId | null) {
-        if (this.textId !== textId) {
-            this.preparationQueue.clear()
-            this.audioQueue.clear()
-            this.textId = textId
-        }
-        const speak = this.preparationQueue.add(() => this.prepare(content, messageIdForDeletion))
-        this.audioQueue.add(async () => {
-            await (await speak)?.()
-        })
-    }
-
-    private async prepare(content: string | null, messageIdForDeletion: MessageId | null, noCache: boolean = false): Promise<(() => Promise<void>) | void> {
-        console.log(`text-to-speech: ${content?.length ?? "-"} characters`)
-        if (content?.trim() === "") { return }
-        const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
-        switch (ttsBackend) {
-            case "off": {
-                break
-            } case "web-speech-api": {
-                if (window.speechSynthesis) {
-                    return async () => {
-                        speechSynthesis.cancel()
-                        const utterance = new SpeechSynthesisUtterance(content ?? "Web Speech API")
-                        utterance.lang = webSpeechAPILang
-                        utterance.pitch = webSpeechAPIPitch
-                        utterance.rate = webSpeechAPIRate
-                        speechSynthesis.speak(utterance)
-                        return new Promise<void>((resolve, reject) => {
-                            utterance.addEventListener("end", () => { resolve() })
-                            utterance.addEventListener("pause", () => { resolve() })
-                            utterance.addEventListener("error", (ev) => { reject(new Error(ev.error)) })
-                        })
-                    }
-                }
-                break
-            } case "pico2wave": {
-                return async () => { await invoke("speak_pico2wave", { content: content ?? "pico2wave", lang: pico2waveVoice }) }
-            } case "azure": {
-                if (!azureTTSRegion || !/^[a-z0-9_\-]+$/i.test(azureTTSRegion) || !azureTTSResourceKey || !azureTTSVoice) { return }
-                const pronouncedContent = content ?? "Microsoft Speech Service Text-to-Speech API"
-                const ssml = `<speak version='1.0' xml:lang='${azureTTSLang}'><voice xml:lang='${azureTTSLang}' name='${azureTTSVoice}'>${pronouncedContent.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&apos;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</voice></speak>`
-
-                // > You're billed for each character that's converted to speech, including punctuation. Although the SSML document itself is not billable, optional elements that are used to adjust how the text is converted to speech, like phonemes and pitch, are counted as billable characters.
-                // > https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/speech-synthesis-markup
-                await db.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, pronouncedContent.length])
-
-                const res = await invoke<[ok: boolean, body: string]>("speak_azure", {
-                    messageId: messageIdForDeletion,
-                    region: azureTTSRegion,
-                    resourceKey: azureTTSResourceKey,
-                    ssml,
-                    beepVolume: 0,
-                    preFetch: true,
-                    noCache,
-                })
-                if (!res[0]) { console.error(res[1]); return }
-                return async () => {
-                    await invoke<[ok: boolean, body: string]>("speak_azure", {
-                        messageId: messageIdForDeletion,
-                        region: azureTTSRegion,
-                        resourceKey: azureTTSResourceKey,
-                        ssml,
-                        beepVolume: 0,
-                        preFetch: false,
-                        noCache,
-                    })
-                }
-            } default: {
-                ttsBackend satisfies never
-            }
-        }
-    }
-}
-
-const isMac = navigator.platform.startsWith("Mac")
-const isWindows = navigator.platform.startsWith("Win")
-const ctrlOrCmd = (ev: KeyboardEvent) => (isMac ? /* cmd */ev.metaKey : ev.ctrlKey)
+import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore } from "./api"
 
 /** Renders markdown contents. */
 const Markdown = (props: { content: string }) => {
@@ -213,17 +67,18 @@ const CodeBlockCopyButton = (props: { content: string }) => {
 }
 
 /** Displays an assistant's or user's message. */
-const Message = (props: { depth: number }) => {
+const MessageRenderer = (props: { depth: number }) => {
     const role = useStore((s) => s.visibleMessages[props.depth]?.role)
     const bookmarked = useStore((s) => typeof s.visibleMessages[props.depth]?.note === "string")
     const status = useStore((s) => s.visibleMessages[props.depth]?.status)
     const content = useStore((s) => s.visibleMessages[props.depth]?.content)
+    const id = useStore((s) => s.visibleMessages[props.depth]?.id)
     const numSiblings = useStore((s) => s.visibleMessages[props.depth - 1]?.children.length ?? 1)
-    const getSiblingId = (s: State) => s.visibleMessages[props.depth - 1]?.children.findIndex((v) => v.id === s.visibleMessages[props.depth]?.id) ?? 1
-    const siblingId = useStore(getSiblingId)
-    const hasPreviousSibling = useStore((s) => getSiblingId(s) > 0)
-    const hasNextSibling = useStore((s) => getSiblingId(s) < (s.visibleMessages[props.depth - 1]?.children.length ?? 1) - 1)
-    const [editing, setEditing] = useState(false)
+    const getSiblingPosition = (s: State) => s.visibleMessages[props.depth - 1]?.children.findIndex((v) => v.id === s.visibleMessages[props.depth]?.id) ?? 1
+    const siblingPosition = useStore(getSiblingPosition)
+    const hasPreviousSibling = useStore((s) => getSiblingPosition(s) > 0)
+    const hasNextSibling = useStore((s) => getSiblingPosition(s) < (s.visibleMessages[props.depth - 1]?.children.length ?? 1) - 1)
+    const editing = useStore((s) => s.editing.has(s.visibleMessages[props.depth]?.id as number))
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const waiting = useStore((s) => s.visibleMessages[props.depth]?.status === -1 && s.waitingAssistantsResponse.includes(s.visibleMessages[props.depth]!.id))
     const isFolded = useStore((s) => s.folded.has(s.visibleMessages[props.depth]?.id as number))
@@ -261,48 +116,23 @@ const Message = (props: { depth: number }) => {
     if (role === "root" || (role === "system" && isDefaultPrompt(content ?? ""))) {
         return <></>
     } else {
-        const saveAndSubmit = async () => {
-            const s = useStore.getState()
-            const path = await appendMessage(s.visibleMessages.slice(0, props.depth).map((v) => v.id), { role: "user", content: textareaRef.current!.value, status: 0 })
-            setEditing(false)
-            await completeAndAppend(path)
-        }
         return <div ref={ref} class={"border-b border-b-zinc-200 dark:border-b-0" + (status === 1 ? " bg-red-100 dark:bg-red-900" : role === "assistant" ? " bg-zinc-100 dark:bg-zinc-700" : "")}>
             <div class="max-w-3xl mx-auto relative p-6 pt-8">
-                {/* Role and toggle switches */}
                 <span class="text-zinc-600 absolute top-0 left-6 select-none cursor-default">
+                    {/* role name */}
                     <span class="text-zinc-500 dark:text-zinc-300 select-none" onMouseDown={(ev) => ev.preventDefault()}>{role}</span>
+
+                    {/* ‹　2 / 3 › */}
                     {numSiblings > 1 && <>
-                        <span class={"inline-block px-2 ml-2" + (hasPreviousSibling ? " cursor-pointer" : "")} onClick={() => {
-                            if (!hasPreviousSibling) { return }
-                            const s = useStore.getState()
-                            const path = s.visibleMessages.map((v) => v.id)
-                            path[props.depth] = s.visibleMessages[props.depth - 1]!.children[siblingId - 1]!.id
-                            reload(path)
-                        }}>‹</span>
-                        {siblingId + 1}<span class="mx-1">/</span>{numSiblings}
-                        <span class={"inline-block px-2" + (hasNextSibling ? " cursor-pointer" : "")} onClick={() => {
-                            if (!hasNextSibling) { return }
-                            const s = useStore.getState()
-                            const path = s.visibleMessages.map((v) => v.id)
-                            path[props.depth] = s.visibleMessages[props.depth - 1]!.children[siblingId + 1]!.id
-                            reload(path)
-                        }}>›</span>
+                        <span class={"inline-block px-2 ml-2" + (hasPreviousSibling ? " cursor-pointer" : "")} onClick={() => { api["message.showOlderVersion"](id!) }}>‹</span>
+                        {siblingPosition + 1}<span class="mx-1">/</span>{numSiblings}
+                        <span class={"inline-block px-2" + (hasNextSibling ? " cursor-pointer" : "")} onClick={() => { api["message.showNewerVersion"](id!) }}>›</span>
                     </>}
                 </span>
 
                 {/* Play audio */}
                 <span title="Text-to-speech" class="text-zinc-600 absolute top-1 right-4 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => {
-                        if (content) {
-                            const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-                            const splitLines = new SplitLines((line) => {
-                                useStore.getState().ttsQueue.pushSegment(id, line, id)
-                            })
-                            splitLines.add(content)
-                            splitLines.end()
-                        }
-                    }}>
+                    onClick={() => { api["message.speak"](id!) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-volume inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M15 8a5 5 0 0 1 0 8"></path>
@@ -319,7 +149,7 @@ const Message = (props: { depth: number }) => {
 
                 {/* Search engine */}
                 {role === "user" && <span title="Search the web for this message" class="text-zinc-600 absolute top-1 right-16 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => { open(useConfigStore.getState().searchEngine.replaceAll("{searchTerms}", encodeURIComponent(content ?? ""))) }}>
+                    onClick={() => { api["message.queryContentWithDefaultSearchEngine"](id!) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-world-search inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M21 12a9 9 0 1 0 -9 9"></path>
@@ -334,7 +164,7 @@ const Message = (props: { depth: number }) => {
 
                 {/* Edit */}
                 {role === "user" && <span title="Edit content" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => { setEditing(true) }}>
+                    onClick={() => { api["message.showMessageEditTextarea"](id!) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-edit inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"></path>
@@ -343,18 +173,22 @@ const Message = (props: { depth: number }) => {
                     </svg>
                 </span>}
 
+                {/* {role === "assistant" && <span title="Fact-check" class="text-zinc-600 absolute top-1 right-[5.5rem] select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
+                    onClick={() => { }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-book inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                        <path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"></path>
+                        <path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"></path>
+                        <path d="M3 6l0 13"></path>
+                        <path d="M12 6l0 13"></path>
+                        <path d="M21 6l0 13"></path>
+                    </svg>
+                </span>} */}
+
                 {role === "assistant" && <CopyResponse content={content ?? ""} />}
 
                 {role === "assistant" && <span title="Bookmark" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={async () => {
-                        const s = useStore.getState()
-                        if (bookmarked) {
-                            await db.execute("DELETE FROM bookmark WHERE messageId = ?", [s.visibleMessages[props.depth]!.id])
-                        } else {
-                            await db.execute("INSERT INTO bookmark VALUES (?, ?)", [s.visibleMessages[props.depth]!.id, ""])
-                        }
-                        reload(s.visibleMessages.map((v) => v.id))
-                    }}>
+                    onClick={() => { api["message.toggleBookmark"](id!) }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill={bookmarked ? "currentColor" : "none"} stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2"></path>
@@ -363,27 +197,27 @@ const Message = (props: { depth: number }) => {
 
                 {/* Textarea */}
                 {editing && <>
-                    <textarea ref={textareaRef} class="w-full mt-2 p-2 shadow-light dark:shadow-dark dark:bg-zinc-700 rounded-lg resize-none" value={content}
+                    <textarea
+                        id={`messageEditTextarea${id}`}
+                        ref={textareaRef}
+                        class="w-full mt-2 p-2 shadow-light dark:shadow-dark dark:bg-zinc-700 rounded-lg resize-none"
+                        value={content}
                         onKeyDown={(ev) => {
                             if (ctrlOrCmd(ev) && ev.code === "Enter") {
                                 ev.preventDefault()
-                                saveAndSubmit()
+                                api["messageEditTextarea.submit"](id!)
                             }
                         }}
                         onInput={autoFitTextareaHeight}></textarea>
                     <div class="text-center">
-                        <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={saveAndSubmit}>Save & Submit</button>
-                        <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { setEditing(false) }}>Cancel</button>
+                        <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { api["messageEditTextarea.submit"](id!) }}>Save & Submit</button>
+                        <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { api["messageEditTextarea.cancelEditing"](id!) }}>Cancel</button>
                     </div>
                 </>}
 
                 {/* Response */}
                 {(isFolded || editing) ? "" : (role === "assistant" || role === "system") ? <Markdown content={processedContent ?? ""}></Markdown> : <div class="whitespace-pre-wrap break-words select-text">{content}</div>}
-                {isFolded && <span class="cursor-pointer text-zinc-500 hover:text-zinc-600 decoration-dashed italic" onClick={() => {
-                    const set = new Set(useStore.getState().folded)
-                    set.delete(useStore.getState().visibleMessages[props.depth]!.id)
-                    useStore.setState({ folded: set })
-                }}>folded</span>}
+                {isFolded && <span class="cursor-pointer text-zinc-500 hover:text-zinc-600 decoration-dashed italic" onClick={() => { api["message.unfold"](useStore.getState().visibleMessages[props.depth]!.id) }}>folded</span>}
 
                 {/* Cursor animation */}
                 {waiting && <span class="mt-1 border-l-8 border-l-zinc-600 dark:border-l-zinc-100 h-5 [animation:cursor_1s_infinite] inline-block"></span>}
@@ -412,365 +246,10 @@ const CopyResponse = (props: { content: string }) => {
     </span>
 }
 
-type MessageId = number
-
-const defaultConfigValues = {
-    APIKey: "",
-    azureApiKeyAuthentication: 1,
-    azureAPIKey: "",
-    azureEndpoint: "",
-    openaiService: "openai" as "openai" | "openai-proxy" | "azure",
-    ttsBackend: (window.speechSynthesis ? "web-speech-api" : "off") as "off" | "pico2wave" | "web-speech-api" | "azure",
-    azureTTSRegion: "",
-    azureTTSResourceKey: "",
-    azureTTSVoice: "en-US-ChristopherNeural",
-    azureTTSLang: "en-US",
-    pico2waveVoice: "en-US" as "en-US" | "en-GB" | "de-DE" | "es-ES" | "fr-FR" | "it-IT",
-    budget: 1,
-    maxCostPerMessage: 0.015,
-    audioFeedback: 1,
-    webSpeechAPILang: "en-US",
-    webSpeechAPIPitch: 1,
-    webSpeechAPIRate: 1,
-    reversedView: 0,
-    whisperLanguage: "",
-    editVoiceInputBeforeSending: 0,
-    theme: "automatic" as "automatic" | "light" | "dark",
-    sidebar: "automatic" as "automatic" | "hide" | "show",
-    openaiProxyAPIKey: "",
-    openaiProxyUrl: "",
-    searchEngine: `https://www.google.com/search?q={searchTerms}`,
-} satisfies Record<string, string | number>
-
-const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
-const _setState = _useConfigStore.setState
-type AsyncStore<S> = {
-    setState(partial: Partial<S>): Promise<void>
-    getState(): S
-    subscribe(callback: (state: S, previous: S) => void): void
-    <U>(selector: (state: S) => U, equals?: (a: U, b: U) => boolean): U
-}
-const useConfigStore: AsyncStore<typeof defaultConfigValues> = Object.assign(_useConfigStore, {
-    setState: async (partial: Partial<typeof defaultConfigValues>) => {
-        for (const [k, v] of Object.entries(partial)) {
-            await db.execute("INSERT OR REPLACE INTO config VALUES (?, ?)", [k, v])
-        }
-        _setState.call(_useConfigStore, partial)
-    }
-})
-
-/** Initializes the useConfigStore. */
-const loadConfig = async () => {
-    // Retrieve data from the database
-    const obj = Object.fromEntries((await db.select<{ key: string, value: string }[]>("SELECT key, value FROM config", []))
-        .map(({ key, value }) => [key, typeof defaultConfigValues[key as keyof typeof defaultConfigValues] === "number" ? +value : value]))
-
-    // Set default values
-    for (const [k, v] of Object.entries(defaultConfigValues)) {
-        if (!(k in obj)) {
-            obj[k] = v
-        }
-    }
-
-    await useConfigStore.setState(obj)
-}
-
-type State = {
-    waitingAssistantsResponse: MessageId[]
-    threads: { id: MessageId, name: string | null }[]
-    visibleMessages: (Message & { children: Message[] })[]
-    search: string
-    folded: Set<MessageId>
-    scrollIntoView: MessageId | null
-    listening: boolean
-    ttsQueue: TextToSpeechQueue
-    openUsageDialog: () => void
-    openBookmarkDialog: () => void
-}
-
-let useStore = create<State>()(() => ({
-    waitingAssistantsResponse: [],
-    threads: [],
-    visibleMessages: [],
-    password: "",
-    search: "",
-    folded: new Set(),
-    scrollIntoView: null,
-    listening: false,
-    ttsQueue: new TextToSpeechQueue(),
-    openUsageDialog: () => { },
-    openBookmarkDialog: () => { }
-}))
-
-// @ts-ignore
-if (import.meta.env.DEV) { window.useStore = useStore = (window.useStore ?? useStore) }
-
-/**
- * Reloads everything from the database.
- * @param path - specifies which messages to display. If path is [], no thread is shown. Otherwise, the best matching thread is shown.
- */
-const reload = async (path: MessageId[]) => {
-    const visibleMessages: (Message & { children: Message[] })[] = []
-    let node = path.length === 0 ? undefined : (await db.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId WHERE id = ?", [path[0]!]))[0]
-    let depth = 1
-    while (node) {
-        const children = await db.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId WHERE parent = ?", [node.id])
-        visibleMessages.push({ ...node, children })
-        node = children.find((v) => v.id === path[depth]) ?? children.at(-1)
-        depth++
-    }
-
-    useStore.setState({ visibleMessages })
-    db.select<{ id: number, name: string | null }[]>("SELECT message.id as id, threadName.name as name FROM message LEFT OUTER JOIN threadName ON message.id = threadName.messageId WHERE message.parent IS NULL ORDER BY message.createdAt DESC")
-        .then((threads) => { useStore.setState({ threads }) })
-}
-
-/** Appends a message to the thread and returns its path. */
-const appendMessage = async (parents: readonly number[], message: Readonly<PartialMessage>) => {
-    let id: number
-    if (parents.length === 0) {
-        // fixes: cannot store TEXT value in INTEGER column message.parent
-        id = (await db.execute("INSERT INTO message (parent, role, status, content) VALUES (NULL, ?, ?, ?) RETURNING id", [message.role, message.status, message.content])).lastInsertId
-    } else {
-        id = (await db.execute("INSERT INTO message (parent, role, status, content) VALUES (?, ?, ?, ?) RETURNING id", [parents.at(-1)!, message.role, message.status, message.content])).lastInsertId
-    }
-    await reload([...parents, id])
-    return [...parents, id]
-}
-
-const chatGPTPricePerToken = 0.002 / 1000
-
-/** Generates an assistant's response. */
-const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[], handleStream?: (content: string, delta: string) => Promise<void>): Promise<PartialMessage> => {
-    try {
-        const usage = await getTokenUsage()
-        if (
-            usage.map((v) => v.model === "gpt-3.5-turbo" ? v.sum * chatGPTPricePerToken : 0).reduce((a, b) => a + b, 0)
-            >= +(await db.select<{ value: number }[]>("SELECT value FROM config WHERE key = 'budget'"))[0]!.value
-        ) {
-            return { role: "assistant", status: 1, content: "Monthly budget exceeded." }
-        }
-
-        const maxCostPerMessage = +(await db.select<{ value: number }[]>("SELECT value FROM config WHERE key = 'maxCostPerMessage'"))[0]!.value
-        const messagesFed = messages.filter((v) => v.role !== "root").map((v) => ({ role: v.role, content: v.content }))
-        let numParentsFed = -1 // all
-
-        // Drop messages
-        const expectedGeneratedTokenCount = 150
-        let omitted = false
-        while (true) {
-            // TODO: performance optimization
-            const tokens = await invoke<number>("count_tokens", { content: messagesFed.map((v) => v.content).join(" ") }) + expectedGeneratedTokenCount
-            const maxTokens = maxCostPerMessage / chatGPTPricePerToken
-            if (tokens < maxTokens) {
-                break
-            }
-            if (messagesFed.length > 1) {
-                messagesFed.splice(0, 1)  // drop the oldest message
-                numParentsFed = messagesFed.length
-            } else {
-                const content = messagesFed[0]!.content
-                messagesFed[0]!.content = content.slice(0, Math.floor(content.length * maxTokens / tokens * 0.9))  // cut tail
-                omitted = true
-            }
-        }
-        if (omitted) {
-            messagesFed[0]!.content += " ... (omitted)"
-        }
-
-        // FIXME: display the number of parents fed
-        console.log(`numParentsFed: ${numParentsFed}`)
-        console.log(messagesFed)
-
-        const model = "gpt-3.5-turbo"
-        let done = false
-        let err: string | null
-        const requestId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-        const dataFetchPromise = new Promise<PartialMessage>((resolve, reject) => {
-            const result: PartialMessage = { content: "", role: "assistant", status: 0 }
-            const loop = async () => {
-                const done2 = done
-                try {
-                    let delta = ""
-                    for (const v of await invoke<string[]>("get_chat_completion", { requestId })) {
-                        let partial: {
-                            choices: {
-                                delta?: {
-                                    role?: "assistant"
-                                    content?: string
-                                }
-                                index?: number
-                                finish_reason?: string | null
-                            }[]
-                            created?: number
-                            id?: string
-                            model?: string
-                            object?: string
-                        }
-                        try { partial = JSON.parse(v) } catch (err) {
-                            throw new Error(`Parse error: ${v}`)
-                        }
-                        if (partial.choices[0]?.delta?.content) {
-                            delta += partial.choices[0].delta.content
-                        }
-                    }
-                    result.content += delta
-                    if (!err) {
-                        await handleStream?.(result.content, delta)
-                    }
-                } catch (err) {
-                    reject(err)
-                }
-                if (done2) { resolve(result); return }
-                setTimeout(loop, 50)
-            }
-            loop()
-        })
-        try {
-            const { APIKey, openaiService, azureEndpoint, azureApiKeyAuthentication, azureAPIKey, openaiProxyAPIKey, openaiProxyUrl } = useConfigStore.getState()
-            if (openaiService === "azure") {
-                err = await invoke<string | null>("start_chat_completion", {
-                    requestId,
-                    secretKey: azureAPIKey,
-                    body: JSON.stringify({
-                        prompt: messagesFed.map((v) => `<|im_start|>${v.role}\n${v.content}\n<|im_end|>\n`).join("") + "<|im_start|>assistant",
-                        stream: true,
-                        stop: ["<|im_end|>"],
-                    }),
-                    endpoint: azureEndpoint,
-                    apiKeyAuthentication: !!azureApiKeyAuthentication,
-                })
-            } else if (openaiService === "openai-proxy") {
-                err = await invoke<string | null>("start_chat_completion", {
-                    requestId,
-                    secretKey: openaiProxyAPIKey,
-                    body: JSON.stringify({
-                        model,
-                        messages: messagesFed,
-                        stream: true,
-                    }),
-                    endpoint: openaiProxyUrl,
-                    apiKeyAuthentication: false,
-                })
-            } else {  // openai
-                err = await invoke<string | null>("start_chat_completion", {
-                    requestId,
-                    secretKey: APIKey,
-                    body: JSON.stringify({
-                        model,
-                        messages: messagesFed,
-                        stream: true,
-                    }),
-                    endpoint: "https://api.openai.com/v1/chat/completions",
-                    apiKeyAuthentication: false,
-                })
-            }
-        } finally {
-            done = true
-        }
-        if (err) {
-            let json: unknown = null
-            try { json = JSON.parse(err) } catch { }
-            if (typeof json === "object" && json !== null && "error" in json && typeof json.error === "object" && json.error !== null && "message" in json.error && typeof json.error.message === "string") {
-                return { role: "assistant", status: 1, content: ("type" in json.error ? json.error.type + ": " : "") + json.error.message }
-            }
-            return { role: "assistant", status: 1, content: err }
-        } else {
-            const result = await dataFetchPromise
-            Promise.all([
-                invoke<number>("count_tokens", { content: messagesFed.join(" ") }),
-                invoke<number>("count_tokens", { content: result.content })
-            ]).then(([promptTokens, completionTokens]) => {
-                db.execute("INSERT INTO textCompletionUsage (model, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?)", [model, promptTokens, completionTokens, promptTokens + completionTokens])
-            })
-            return result
-        }
-    } catch (err) {
-        console.error(err)
-        return { role: "assistant", status: 1, content: err instanceof Error ? err.message : err + "" }
-    }
-}
-
-const extractFirstCodeBlock = (content: string) => /```[^\n]*\n*([\s\S]*?)```/.exec(content)?.[1]
-
-/** Generates an assistant's response and appends it to the thread. */
-const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ message: PartialMessage, path: MessageId[] }> => {
-    const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 })
-    const id = path.at(-1)!
-    useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
-    try {
-        const ttsId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-        const splitLines = new SplitLines((line) => {
-            useStore.getState().ttsQueue.pushSegment(ttsId, line, id)
-        })
-        const newMessage = await complete(
-            await Promise.all(messages.map((v) =>
-                db.select<{ role: "user" | "assistant" | "system", content: string }[]>(
-                    "SELECT role, content FROM message WHERE id = ?", [v]).then((records) => records[0]!))),
-            async (content, delta) => {
-                splitLines.add(delta)
-                await db.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
-                reload(path)
-            },
-        )
-        splitLines.end()
-        if (newMessage.status === 1) {
-            await db.execute("UPDATE message SET role = ?, status = ?, content = content || '\n' || ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
-            useStore.getState().ttsQueue.speakText(newMessage.content + `\nPress ${isMac ? "command" : "control"} plus shift plus R to retry.`, id)
-        } else {
-            if (useStore.getState().threads.find((v) => v.id === messages[0]!)?.name === "Integrated Terminal") {
-                // Extract the first code block
-                const block = extractFirstCodeBlock(newMessage.content)
-                if (block) {
-                    newMessage.content = block
-                }
-            }
-            await db.execute("UPDATE message SET role = ?, status = ?, content = ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
-        }
-        reload(path)
-        useStore.setState({ scrollIntoView: id })
-        return { message: newMessage, path }
-    } finally {
-        useStore.setState((s) => ({ waitingAssistantsResponse: s.waitingAssistantsResponse.filter((v) => v !== id) }))
-    }
-}
-
-/** Automatically names the thread. */
-const autoName = async (content: string, root: MessageId, tags: readonly string[]) => {
-    const res = await complete([
-        { role: "user", content: `What is the topic of the following message? Answer using only a few words, and refrain from adding any additional comments beyond the topic name.\n\nMessage:${content}` }
-    ])
-    if (!res.status) {
-        res.content = res.content.trim()
-        let m: RegExpExecArray | null
-        if ((m = /^[^"]*topic[^"]*"([^"]+)"[^"]*$/i.exec(res.content)) !== null) {
-            // Topic: "test", The topic is "test".
-            res.content = m[1]!
-        } else if ((m = /^topic:\s*(.+)$/i.exec(res.content)) !== null) {
-            // Topic: test
-            res.content = m[1]!
-        } else if ((m = /^"(.+)"$/i.exec(res.content)) !== null) {
-            // "test"
-            res.content = m[1]!
-        }
-        await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [root, res.content + tags.map((t) => ` #${t}`).join("")])
-        reload(useStore.getState().visibleMessages.map((v) => v.id))
-        return
-    }
-    console.error(res)
-}
-
 /** Highlights matching substrings. */
 const getHighlightedText = (text: string, highlight: string) => {
     const parts = text.split(new RegExp(`(${highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi"))
     return <span>{parts.map(part => part.toLowerCase() === highlight.toLowerCase() ? <b class="text-orange-200">{part}</b> : part)}</span>
-}
-
-/** "test #foo #bar" -> ["foo", "bar"] */
-const extractHashtags = (content: string) => {
-    const m = /(?: #[^#\s]+?)*$/.exec(content)
-    if (!m || !m[0]) { return [] }
-    return m[0].split('#').map((v) => v.trim()).filter((v) => v)
 }
 
 /** Renders an entry in the thread list. */
@@ -779,7 +258,7 @@ const ThreadListItem = (props: { i: number }) => {
     const active = useStore((s) => s.visibleMessages[0]?.id === s.threads[props.i]?.id)
     const id = useStore((s) => s.threads[props.i]?.id)
     const searchQuery = useStore((s) => s.search)
-    const [renaming, setRenaming] = useState(false)
+    const renaming = useStore((s) => s.renamingThread === s.threads[props.i]?.id)
     const renameInputRef = useRef<HTMLInputElement>(null)
     useEffect(() => {
         if (renaming) {
@@ -797,21 +276,9 @@ const ThreadListItem = (props: { i: number }) => {
         const dialog = document.querySelector<HTMLDialogElement>("#contextmenu")!
 
         render(<>
-            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { setRenaming(true) }}>Rename</button>
-            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={async () => {
-                let node = (await db.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [id])).at(-1)
-                while (node) {
-                    if (node.role === "user") {
-                        autoName(node.content, id!, extractHashtags(node.content))
-                        break
-                    }
-                    node = (await db.select<(PartialMessage & { id: MessageId })[]>("SELECT * FROM message WHERE parent = ?", [node.id])).at(-1)
-                }
-            }}>Regenerate thread name</button>
-            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={async () => {
-                await db.execute("DELETE FROM message WHERE id = ?", [id])
-                await reload(useStore.getState().visibleMessages.map((v) => v.id))
-            }}>Delete</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["chatThread.showThreadRenameTextareaAndFocusIt"](id!) }}>Rename</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["chatThread.generateThreadName"](id!) }}>Regenerate thread name</button>
+            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["chatThread.delete"](id!) }}>Delete</button>
         </>, dialog)
 
         // Set left and top before calling showModal() to prevent scrolling
@@ -826,7 +293,7 @@ const ThreadListItem = (props: { i: number }) => {
 
     return <div class={"pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative text-ellipsis pr-10" + (active ? " bg-zinc-700" : " hover:bg-zinc-600")}
         data-thread-id={id}
-        onClick={() => reload([id!])}
+        onClick={() => { api["chatThread.open"](id!) }}
         onContextMenu={onContextMenu}>
         {name !== "Integrated Terminal" && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-message inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -849,13 +316,8 @@ const ThreadListItem = (props: { i: number }) => {
                     ev.currentTarget.blur()
                 }
             }}
-            onChange={async (ev) => {
-                await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [id, ev.currentTarget.value])
-            }}
-            onBlur={async () => {
-                setRenaming(false)
-                await reload(useStore.getState().visibleMessages.map((v) => v.id))
-            }}
+            onChange={async (ev) => { await db.current.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [id, ev.currentTarget.value]) }}
+            onBlur={async () => { api["chatThread.closeThreadRenameTextarea"]() }}
             onClick={(ev) => { ev.stopImmediatePropagation() }}></input>}
         {active && !renaming && <svg xmlns="http://www.w3.org/2000/svg"
             class="icon icon-tabler icon-tabler-dots absolute right-4 top-0 bottom-0 my-auto p-1 hover:bg-zinc-500 rounded-lg"
@@ -879,22 +341,6 @@ const SearchBar = () => {
         placeholder="Search"></input>
 }
 
-const defaultPrompt = `\
-Assistant is a large language model trained by OpenAI.
-knowledge cutoff: 2021-09
-Current date: ${Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date())}
-Browsing: disabled`
-
-const isDefaultPrompt = (prompt: string) =>
-    new RegExp(String.raw`^Assistant is a large language model trained by OpenAI\.
-knowledge cutoff: 2021-09
-Current date: \w+ \d+, \d+
-Browsing: disabled$`).test(prompt)
-
-if (!isDefaultPrompt(defaultPrompt)) {
-    console.error(`!isDefaultPrompt(defaultPrompt)`)
-}
-
 /** Renders the application. */
 const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -903,9 +349,9 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     const isResponseInIntegratedTerminal = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name === "Integrated Terminal" && s.visibleMessages.at(-1)?.role === "assistant")
 
     useEffect(() => {
-        focusInput()
-        if (props.send) { send() }
-        if (props.voiceInput) { startListening() }
+        api["newChatMessageTextarea.focus"]()
+        if (props.send) { api["newChatMessageTextarea.submit"]() }
+        if (props.voiceInput) { api["speechToText.start"]() }
     }, [])
 
     // undo/redo in textarea
@@ -935,56 +381,20 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         }
     })
 
-    const focusInput = () => {
-        textareaRef.current?.focus()
-        textareaRef.current?.select()
-        if (useConfigStore.getState().audioFeedback) { invoke("sound_focus_input") }
-    }
-
-    const openThread = (id: MessageId) => {
-        reload([id])
-        focusInput()
-        if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(useStore.getState().threads.find((v) => v.id === id)?.name ?? "untitled thread", id) }
-        document.querySelector(`[data-thread-id="${id}"]`)?.scrollIntoView({})
-    }
-
-    const startListening = () => {
-        const startTime = Date.now()
-        useStore.getState().ttsQueue.cancel()
-        invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
-            .then((res) => {
-                db.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
-                textareaRef.current!.value += res as string
-                autoFitTextareaHeight()
-                if (!useConfigStore.getState().editVoiceInputBeforeSending) {
-                    send()
-                }
-            })
-            .finally(() => {
-                useStore.setState({ listening: false })
-            })
-        useStore.setState({ listening: true })
-    }
-
     const [isWaitingNextKeyPress, setIsWaitingNextKeyPress] = useState(false)
     useEventListener("keydown", (ev) => {
         if (isWaitingNextKeyPress) {
             setIsWaitingNextKeyPress(false)
             if (ev.key === "0") {
-                // Fold all 
                 ev.preventDefault()
-                const s = useStore.getState()
-                useStore.setState({ folded: new Set([...s.folded, ...s.visibleMessages.filter((v) => v.role === "assistant").map((v) => v.id)]) })
+                api["activeChatThread.foldAll"]()
                 return
             } else if (ev.code === "KeyJ") {
-                // Unfold all
-                useStore.setState({ folded: new Set() })
                 ev.preventDefault()
+                api["activeChatThread.unfoldAll"]()
                 return
             }
         }
-
-        const speakAudioFeedback = (content: string) => { if (useConfigStore.getState().audioFeedback) { useStore.getState().ttsQueue.speakText(content, null) } }
 
         if (ev.code === "Escape" && !document.querySelector("dialog[open]")) {
             ev.preventDefault()
@@ -1014,115 +424,59 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
             ev.preventDefault()
             if (useStore.getState().listening) {
-                invoke("stop_listening")
+                api["speechToText.stop"]
             } else {
-                startListening()
+                api["speechToText.start"]
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyO") {
             ev.preventDefault()
-            useStore.getState().openBookmarkDialog()
+            api["bookmarkDialog.show"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyU") {
-            // Speak texts in the input box
             ev.preventDefault()
-            useStore.getState().ttsQueue.speakText(textareaRef.current!.value, null, true)
+            api["activeTextarea.speak"]()
         } else if (ctrlOrCmd(ev) && ev.key === "/") {
-            // Focus the input box
             ev.preventDefault()
-            focusInput()
-            setTextareaValueAndAutoResize(textareaRef.current!, "/")
-            textareaRef.current!.selectionStart = 1
-            textareaRef.current!.selectionEnd = 1
+            api["integratedTerminal.open"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyL") {
-            // Focus the input box
             ev.preventDefault()
-            focusInput()
+            api["newChatMessageTextarea.focus"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyN") {
-            // Move to a new thread
             ev.preventDefault()
-            reload([])
-            focusInput()
+            api["chatThreadNavigation.moveToNewThread"]()
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyS") {
-            // Stop generating
             ev.preventDefault()
-            invoke("stop_all_chat_completions")
-            invoke("cancel_listening")
+            api["assistant.stopGeneratingResponse"]()
         } else if (ctrlOrCmd(ev) && ev.key === ",") {
             ev.preventDefault()
-            document.querySelector<HTMLDialogElement>("#preferences")?.showModal()
+            api["preferencesDialog.show"]()
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "KeyR") {
-            // Speak the last response from the assistant
             ev.preventDefault()
-            const visibleMessages = useStore.getState().visibleMessages
-            if (visibleMessages.length === 0) {
-                speakAudioFeedback("No messages in the thread.")
-            } else {
-                const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-                const message = visibleMessages.at(-1)!
-                const splitLines = new SplitLines((line) => {
-                    useStore.getState().ttsQueue.pushSegment(id, line, message.id)
-                })
-                splitLines.add(message.content)
-                splitLines.end()
+            const id = api["activeChatThread.getIdOfLatestMessageByAssistant"]()
+            if (id !== null) {
+                api["message.speak"](id)
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyR") {
             // Regenerate response
             ev.preventDefault()
-            regenerateResponse()
+            api["assistant.regenerateResponse"]()
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "Tab") {
-            // Move to the newer thread
             ev.preventDefault()
-            const s = useStore.getState()
-            if (s.visibleMessages.length === 0) {
-                speakAudioFeedback("There are no newer threads.")
-            } else {
-                const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
-                if (i === -1) {
-                    speakAudioFeedback("Something went wrong.")
-                } else if (i <= 0) {
-                    reload([])
-                    focusInput()
-                    speakAudioFeedback("new thread")
-                } else {
-                    openThread(s.threads[i - 1]!.id)
-                }
-            }
+            api["chatThreadNavigation.moveToNewerThread"]()
         } else if (ctrlOrCmd(ev) && !ev.shiftKey && ev.code === "Tab") {
-            // Move to the older thread
             ev.preventDefault()
-            const s = useStore.getState()
-            if (s.threads.length === 0) {
-                speakAudioFeedback("There are no threads.")
-            } else if (s.visibleMessages.length === 0) {
-                openThread(s.threads[0]!.id)
-            } else {
-                const i = s.threads.findIndex((v) => v.id === s.visibleMessages[0]!.id)
-                if (i === -1) {
-                    speakAudioFeedback("Something went wrong.")
-                } else if (i >= s.threads.length - 1) {
-                    speakAudioFeedback("There are no older threads.")
-                } else {
-                    openThread(s.threads[i + 1]!.id)
-                }
-            }
+            api["chatThreadNavigation.moveToOlderThread"]()
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyE") {
-            // Open Side Bar
             ev.preventDefault()
-            setIsSideBarOpen(() => true)
+            api["sideBar.show"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyB") {
-            // Toggle Side Bar
             ev.preventDefault()
-            setIsSideBarOpen((v) => !v)
+            api["sideBar.toggleVisibility"]
         } else if (ctrlOrCmd(ev) && ev.code === "KeyG") {
             ev.preventDefault()
-            const s = useStore.getState()
-            const content = s.visibleMessages.findLast((v) => v.role === "user")?.content
-            if (!content) {
-                s.ttsQueue.speakText("No user messages were found", null)
-                return
+            const id = api["activeChatThread.getIdOfLatestMessageByUser"]()
+            if (id !== null) {
+                api["message.queryContentWithDefaultSearchEngine"](id)
             }
-
-            // Query user's previous message with Google
-            open(useConfigStore.getState().searchEngine.replaceAll("{searchTerms}", encodeURIComponent(content)))
         } else if (ctrlOrCmd(ev) && ev.code === "KeyK") {
             ev.preventDefault()
             setIsWaitingNextKeyPress(true)
@@ -1134,65 +488,8 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         textareaRef.current!.style.height = ""
         textareaRef.current!.style.height = Math.min(window.innerHeight / 2, textareaRef.current!.scrollHeight) + "px"
     }
+    const isSideBarOpen = useStore((s) => s.isSideBarOpen)
 
-    /** Sends the user's message. */
-    const send = async () => {
-        if (textareaRef.current!.value === "") { return }
-        let s = useStore.getState()
-
-        let path: MessageId[]
-
-        const run = async (shouldAutoName: string | null, tags: string[]) => {
-            setTextareaValueAndAutoResize(textareaRef.current!, "")
-            const assistant = await completeAndAppend(path)
-            if (assistant.message.status === 0 && shouldAutoName) {
-                // do not wait
-                autoName(shouldAutoName, path[0]!, tags)
-            }
-            return assistant
-        }
-
-        if (textareaRef.current!.value.startsWith("/")) {
-            // Generate a shell script if the prompt is prefixed with "/"
-            // remove "/"
-            const content = textareaRef.current!.value.slice(1)
-            setTextareaValueAndAutoResize(textareaRef.current!, "")
-
-            const thread = s.threads.find((v) => v.name === "Integrated Terminal")
-            if (!thread) {
-                path = await appendMessage([], { role: "root", content: "", status: 0 })
-                await db.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [path[0]!, "Integrated Terminal"])
-                await reload(path)
-            } else {
-                path = [thread.id]
-            }
-            path = await appendMessage(path, { role: "user", content, status: 0 })
-            path = await appendMessage(path, {
-                // The prompt from https://github.com/TheR1D/shell_gpt/ version 0.7.0, MIT License, Copyright (c) 2023 Farkhod Sadykov
-                role: "system",
-                content: `Provide only ${isWindows ? "PowerShell" : "Bash"} command as output, without any additional text or prompt.`,
-                status: 0,
-            })
-            await run(null, [])
-        } else if (s.visibleMessages.length === 0) {
-            // Append the system message if this is the first message in the thread
-            path = await appendMessage([], { role: "root", content: "", status: 0 })
-            path = await appendMessage(path, {
-                role: "system", content: defaultPrompt, status: 0
-            })
-            const content = textareaRef.current!.value
-            path = await appendMessage(path, { role: "user", content, status: 0 })
-            run(content, [])
-        } else {
-            path = await appendMessage(s.visibleMessages.map((v) => v.id), { role: "user", content: textareaRef.current!.value, status: 0 })
-            run(null, [])
-        }
-    }
-
-    const [isSideBarOpen, setIsSideBarOpen] = useState<boolean>(() => {
-        const { sidebar } = useConfigStore.getState()
-        return sidebar === "show" || sidebar === "automatic" && window.innerWidth > 800
-    })
     const [shouldDisplayAPIKeyInputOverride, setShouldDisplayAPIKeyInputOverride] = useState(false)
     const shouldDisplayAPIKeyInput = useStore((s) => s.threads.length === 0) || shouldDisplayAPIKeyInputOverride
     const threadName = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name ?? "New chat")
@@ -1204,7 +501,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     }, [threadName])
 
     return <>
-        {!isSideBarOpen && <div title="Open side bar" class="absolute top-4 left-4 cursor-pointer z-40 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:text-zinc-200 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); setIsSideBarOpen((v) => !v) }}>
+        {!isSideBarOpen && <div title="Open side bar" class="absolute top-4 left-4 cursor-pointer z-40 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:text-zinc-200 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); api["sideBar.show"]() }}>
             <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-menu-2" width="30" height="30" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                 <path d="M4 6l16 0"></path>
@@ -1214,7 +511,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         </div>}
         <div class="flex">
             <div class={"text-sm overflow-x-hidden whitespace-nowrap bg-zinc-800 dark:bg-zinc-900 h-[100vh] text-white flex flex-col relative" + (isSideBarOpen ? " w-80" : " w-0")}>
-                {isSideBarOpen && <div title="Close side bar" class="absolute top-5 right-4 cursor-pointer z-40 hover:bg-zinc-700 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); setIsSideBarOpen((v) => !v) }}>
+                {isSideBarOpen && <div title="Close side bar" class="absolute top-5 right-4 cursor-pointer z-40 hover:bg-zinc-700 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); api["sideBar.hide"]() }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevrons-left" width="30" height="30" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M11 7l-5 5l5 5"></path>
@@ -1222,10 +519,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     </svg>
                 </div>}
                 <div class="pl-4 pr-16 pb-2 pt-4">
-                    <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-700" : " hover:bg-zinc-700 cursor-pointer")} onClick={() => {
-                        reload([])
-                        focusInput()
-                    }}>
+                    <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-700" : " hover:bg-zinc-700 cursor-pointer")} onClick={() => { api["chatThreadNavigation.moveToNewThread"]() }}>
                         <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-plus inline mr-4 [transform:translateY(-2px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                             <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                             <path d="M12 5l0 14"></path>
@@ -1338,7 +632,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
                         <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
                     </div>}
-                    {(reversed ? (x: number[]) => x.reverse() : (x: number[]) => x)([...Array(numMessages).keys()]).map((i) => <Message key={i} depth={i} />)}
+                    {(reversed ? (x: number[]) => x.reverse() : (x: number[]) => x)([...Array(numMessages).keys()]).map((i) => <MessageRenderer key={i} depth={i} />)}
                     <div class="h-20"></div>
                 </div>
                 <div class={"px-2 " + (reversed ? "top-4 left-0 right-0 mx-auto text-center absolute max-w-3xl" : "pt-4 pb-4 relative bg-white dark:bg-zinc-800")}>
@@ -1347,44 +641,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                         {isResponseInIntegratedTerminal && <>
                             <div class={"flex-1 flex " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ")}>
                                 <div class={"shadow-light text-center bg-zinc-100 py-3 relative cursor-pointer hover:bg-zinc-200 [&:has(svg:hover)]:bg-zinc-100 text-zinc-600 dark:shadow-dark rounded-lg bg-zinc100 flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}
-                                    onClick={async () => {
-                                        const path = useStore.getState().visibleMessages.map((v) => v.id)
-                                        const { content } = useStore.getState().visibleMessages.at(-1)!
-                                        const p = isWindows
-                                            ? new Command("exec-pwsh", ["-c", content]) // untested
-                                            : new Command("exec-bash", ["-c", content])
-
-                                        // TODO: stream output
-                                        const lines: string[] = []
-                                        p.stdout.on("data", (line) => { lines.push(line) })
-                                        p.stderr.on("data", (line) => { lines.push(line) })
-                                        let appended = false
-                                        p.on("error", (err) => {
-                                            if (appended) { return }
-                                            appended = true
-                                            appendMessage(path, {
-                                                role: "system",
-                                                content: `The command returned the following error:\n\`\`\`\n${err}\n\`\`\``,
-                                                status: 1,
-                                            })
-                                        })
-                                        p.on("close", (data) => {
-                                            if (appended) { return }
-                                            appended = true
-                                            let concatenatedOutput = lines.join("\n")
-                                            // Cut at ~1000 tokens to avoid bankruptcy
-                                            // TODO: add a way to display the entire output
-                                            concatenatedOutput = concatenatedOutput.length > 4000 ? concatenatedOutput.slice(0, 4000) + "\n..." : concatenatedOutput
-                                            const statusText = (data.code === 0 ? `The command finished successfully.` : `The command finished with code ${data.code}${data.signal ? ` with signal ${data.signal}` : ""}.`)
-                                            useStore.getState().ttsQueue.speakText(statusText, null)
-                                            appendMessage(path, {
-                                                role: "system",
-                                                content: statusText + `\nThe output was:\n\`\`\`\n${concatenatedOutput}\n\`\`\``,
-                                                status: 0,
-                                            })
-                                        })
-                                        await p.spawn()
-                                    }}>
+                                    onClick={() => { api["integratedTerminal.runLatestCodeBlock"]() }}>
                                     Execute
                                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute top-0 bottom-0 my-auto right-0 p-2 hover:bg-zinc-300 dark:stroke-slate-100 rounded" width="40" height="40" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
                                         onClick={(ev) => {
@@ -1417,14 +674,14 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                                             ctrlOrCmd(ev) && ev.code === "Enter"
                                         ) {
                                             ev.preventDefault()
-                                            send()
+                                            api["newChatMessageTextarea.submit"]()
                                             return
                                         }
                                     }}
                                     onInput={autoFitTextareaHeight}></textarea>
                                 <div
                                     class={"absolute bottom-2 right-5 cursor-pointer p-1"}
-                                    onClick={() => { send() }}>
+                                    onClick={() => { api["newChatMessageTextarea.submit"]() }}>
                                     {/* tabler-icons, MIT license, Copyright (c) 2020-2023 Paweł Kuna */}
                                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-send dark:stroke-slate-100" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.3" stroke="#000000" fill="none" stroke-linecap="round" stroke-linejoin="round">
                                         <path stroke="none" d="M0 0h24v24H0z" fill="none" />
@@ -1565,11 +822,6 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
     </div>
 }
 
-const setTextareaValueAndAutoResize = (textarea: HTMLTextAreaElement, value: string) => {
-    textarea.value = value
-    textarea.dispatchEvent(new InputEvent('input', { bubbles: true }))
-}
-
 const PreferencesDialog = () => {
     const reversed = useConfigStore((s) => s.reversedView)
     const theme = useConfigStore((s) => s.theme)
@@ -1621,8 +873,8 @@ const PreferencesDialog = () => {
                                 }}
                                 placeholder={`https://www.google.com/search?q={searchTerms}`}></input>
                             <button class="ml-1 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={async () => {
-                                await reload([])
-                                setTextareaValueAndAutoResize(document.querySelector<HTMLTextAreaElement>("#userPromptTextarea")!, `\
+                                await api["chatThreadNavigation.moveToNewThread"]()
+                                await api["newChatMessageTextarea.setValue"](`\
 Google: https://www.google.com/search?q={searchTerms}
 StackOverflow: https://stackoverflow.com/search?q={searchTerms}
 MDN: https://developer.mozilla.org/en-US/search?q={searchTerms}
@@ -1643,7 +895,7 @@ const BookmarkDialog = () => {
     useEffect(() => {
         useStore.setState({
             openBookmarkDialog: () => {
-                db.select<Bookmark[]>("SELECT id, content, note, createdAt, modifiedAt FROM bookmark JOIN message ON message.id = bookmark.messageId ORDER BY createdAt DESC")
+                db.current.select<Bookmark[]>("SELECT id, content, note, createdAt, modifiedAt FROM bookmark JOIN message ON message.id = bookmark.messageId ORDER BY createdAt DESC")
                     .then((res) => { setBookmarks(res) })
                 document.querySelector<HTMLDialogElement>("#bookmark")!.showModal()
             }
@@ -1663,12 +915,7 @@ const BookmarkDialog = () => {
                 </thead>
                 <tbody>
                     {bookmarks.map((b) => <tr class="cursor-pointer hover:bg-zinc-600"
-                        onClick={() => {
-                            findParents(b.id).then(async (res) => {
-                                await reload(res)
-                                useStore.setState({ scrollIntoView: res.at(-1)! })
-                            })
-                        }}>
+                        onClick={() => { api["message.show"](b.id) }}>
                         <td class="px-2 whitespace-nowrap">{b.createdAt}</td>
                         <td class="px-2 whitespace-nowrap max-w-[40vw] overflow-x-scroll py-4">{b.content}</td>
                         {/* <td class="px-2">{b.note}</td> */}
@@ -1747,10 +994,6 @@ const InputVolumeIndicator = () => {
     </div>
 }
 
-const findParents = async (id: MessageId) => {
-    return (await db.select<{ id: number }[]>(findParentsSQL, [id])).reverse().map((v) => v.id)
-}
-
 const SearchResult = () => {
     const search = useStore((s) => s.search)
     const [messages, setMessages] = useState<{ id: number, content: string }[]>([])
@@ -1760,17 +1003,12 @@ const SearchResult = () => {
             return
         }
         (async () => {
-            setMessages(await db.select<{ id: number, content: string }[]>("SELECT id, content FROM message WHERE content LIKE ?", ["%" + search + "%"]))
+            setMessages(await db.current.select<{ id: number, content: string }[]>("SELECT id, content FROM message WHERE content LIKE ?", ["%" + search + "%"]))
         })()
     }, [search])
     return <>{messages.map((message) => {
         return <div key={message.id} class="pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative hover:bg-zinc-600"
-            onClick={() => {
-                findParents(message.id).then(async (res) => {
-                    await reload(res)
-                    useStore.setState({ scrollIntoView: res.at(-1)! })
-                })
-            }}>
+            onClick={() => { api["message.show"](message.id) }}>
             {getHighlightedText(message.content.slice(message.content.toLowerCase().indexOf(search.toLowerCase())), search)}
         </div>
     })}</>
@@ -1978,8 +1216,6 @@ const TextToSpeechDialog = () => {
     </dialog>
 }
 
-const getTokenUsage = (now = new Date()) => db.select<{ model: string, sum: number, count: number }[]>(getTokenUsageSQL, [now.toISOString()])
-
 const BudgetDialog = () => {
     const [totalTokens, setTotalTokens] = useState<{ model: string, sum: number, count: number }[]>([])
     const [totalTTSCharacters, setTotalTTSCharacters] = useState<number>(-1)
@@ -1994,12 +1230,12 @@ const BudgetDialog = () => {
                 const now = new Date()
                 setMonth(Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(now))
                 setTotalTokens(await getTokenUsage(now))
-                setTotalTTSCharacters((await db.select<{ count: number }[]>(`\
+                setTotalTTSCharacters((await db.current.select<{ count: number }[]>(`\
 SELECT
     coalesce(sum(numCharacters), 0) as count
 FROM textToSpeechUsage
 WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, [now.toISOString()]))[0]?.count ?? 0)
-                setTotalSpeechToTextMinutes(((await db.select<{ sumMs: number }[]>(`\
+                setTotalSpeechToTextMinutes(((await db.current.select<{ sumMs: number }[]>(`\
 SELECT
     coalesce(sum(durationMs), 0) as sumMs
 FROM speechToTextUsage
@@ -2064,11 +1300,6 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
     </dialog>
 }
 
-const regenerateResponse = async () => {
-    const s = useStore.getState()
-    await completeAndAppend(s.visibleMessages.slice(0, -1).map((v) => v.id))
-}
-
 /** Regenerates an assistant's message. */
 const RegenerateResponse = () => {
     const reversed = useConfigStore((s) => !!s.reversedView)
@@ -2086,7 +1317,7 @@ const RegenerateResponse = () => {
         </div>
     }
     if (canRegenerateResponse) {
-        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={regenerateResponse}>
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
             <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                 <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
@@ -2100,10 +1331,7 @@ const RegenerateResponse = () => {
 
 /** The entry point. */
 const main = async () => {
-    db = await Database.load("sqlite:chatgpt_tauri.db")
-    await db.execute(createTablesSQL)
-    await reload([])
-    await loadConfig()
+    await init()
 
     // Theme
     const applyTheme = () => {

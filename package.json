@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^1.2.0",
+    "element.scrollintoviewifneeded-polyfill": "^1.0.1",
     "highlight.js": "^11.7.0",
     "p-queue": "^7.3.4",
     "preact": "^10.13.0",
