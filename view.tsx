@@ -9,7 +9,7 @@ import { appWindow } from "@tauri-apps/api/window"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
-import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore } from "./api"
+import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore } from "./state"
 
 /** Renders markdown contents. */
 const Markdown = (props: { content: string }) => {
