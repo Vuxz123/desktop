@@ -36,12 +36,30 @@ const Markdown = (props: { content: string }) => {
                 </>
             },
             a(props) {
-                return <a href={props.href} onClick={(ev) => {
-                    ev.preventDefault()
-                    if (props.href) {
-                        open(props.href)
-                    }
-                }}>{props.children}</a>
+                return <a
+                    href={props.href}
+                    onClick={(ev) => {
+                        ev.preventDefault()
+                        if (props.href) {
+                            open(props.href)
+                        }
+                    }}
+                    onContextMenu={(ev) => {
+                        ev.preventDefault()
+                        const dialog = document.querySelector<HTMLDialogElement>("#contextmenu")!
+
+                        render(<>
+                            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { clipboard.writeText(props.href ?? "") }}>Copy Link</button>
+                        </>, dialog)
+
+                        dialog.style.left = ev.pageX + "px"
+                        dialog.style.top = ev.pageY + "px"
+
+                        dialog.showModal()
+                        const rect = dialog.getBoundingClientRect()
+                        dialog.style.left = Math.min(ev.pageX, window.innerWidth - rect.width) + "px"
+                        dialog.style.top = Math.min(ev.pageY, window.scrollY + window.innerHeight - rect.height - 5) + "px"
+                    }}>{props.children}</a>
             },
         }}>{props.content}</ReactMarkdown>, [props.content])
 }
@@ -189,7 +207,7 @@ const MessageRenderer = (props: { depth: number }) => {
 
                 {role === "assistant" && <span title="Bookmark" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { api["message.toggleBookmark"](id!) }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill={bookmarked ? "currentColor" : "none"} stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline dark:stroke-zinc-300 dark:text-zinc-100" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill={bookmarked ? "currentColor" : "none"} stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                         <path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2"></path>
                     </svg>
@@ -272,7 +290,6 @@ const ThreadListItem = (props: { i: number }) => {
     const onContextMenu = (ev: MouseEvent) => {
         ev.preventDefault()
         ev.stopImmediatePropagation()
-        if (ev.type === "mousedown" && ev.button === 2) { return }  // right click should be handled with onContextMenu
         const dialog = document.querySelector<HTMLDialogElement>("#contextmenu")!
 
         render(<>
@@ -281,7 +298,6 @@ const ThreadListItem = (props: { i: number }) => {
             <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { api["thread.delete"](id!) }}>Delete</button>
         </>, dialog)
 
-        // Set left and top before calling showModal() to prevent scrolling
         dialog.style.left = ev.pageX + "px"
         dialog.style.top = ev.pageY + "px"
 
@@ -369,16 +385,12 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
 
     /** Disable context menus on most places. */
     useEventListener("contextmenu", (ev) => {
-        if (document.querySelector<HTMLDialogElement>("#contextmenu")!.open) {
-            return
-        } else {
-            if (ev.target instanceof HTMLInputElement ||  // clicked on an input
-                ev.target instanceof HTMLTextAreaElement ||  // clicked on a textarea
-                document.getSelection()?.isCollapsed === false || // has a selection
-                ev.target instanceof Element && ev.target.matches(".select-text, .select-text *")  // clicked on a selectable text
-            ) { return }
-            ev.preventDefault()
-        }
+        if (ev.target instanceof HTMLInputElement ||  // clicked on an input
+            ev.target instanceof HTMLTextAreaElement ||  // clicked on a textarea
+            document.getSelection()?.isCollapsed === false || // has a selection
+            ev.target instanceof Element && ev.target.matches(".select-text, .select-text *")  // clicked on a selectable text
+        ) { return }
+        ev.preventDefault()
     })
 
     const [isWaitingNextKeyPress, setIsWaitingNextKeyPress] = useState(false)
@@ -490,7 +502,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
     }
     const isSideBarOpen = useStore((s) => s.isSideBarOpen)
 
-    const [shouldDisplayAPIKeyInputOverride, setShouldDisplayAPIKeyInputOverride] = useState(false)
+    const shouldDisplayAPIKeyInputOverride = useStore((s) => s.shouldDisplayAPIKeyInputOverride)
     const shouldDisplayAPIKeyInput = useStore((s) => s.threads.length === 0) || shouldDisplayAPIKeyInputOverride
     const threadName = useStore((s) => s.threads.find((v) => v.id === s.visibleMessages[0]?.id)?.name ?? "New chat")
     const reversed = useConfigStore((s) => !!s.reversedView)
@@ -558,7 +570,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
                         ev.preventDefault()
-                        setShouldDisplayAPIKeyInputOverride((v) => !v)
+                        useStore.setState((s) => ({ shouldDisplayAPIKeyInputOverride: !s.shouldDisplayAPIKeyInputOverride }))
                     }}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-key inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
@@ -624,7 +636,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     <RegenerateResponse />
                     <div class="leading-4 flex">
                         {isResponseInIntegratedTerminal && <>
-                            <div class={"flex-1 flex " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ")}>
+                            <div class={"flex-1 flex " + (!isSideBarOpen && reversed ? /* make the hamburger menu and the textarea not to overlap */"ml-16 51rem:ml-0 " : "")}>
                                 <div class={"shadow-light text-center bg-zinc-100 py-3 relative cursor-pointer hover:bg-zinc-200 [&:has(svg:hover)]:bg-zinc-100 text-zinc-600 dark:shadow-dark rounded-lg bg-zinc100 flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}
                                     onClick={() => { api["console.runLatest"]() }}>
                                     Execute
@@ -632,7 +644,6 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                                         onClick={(ev) => {
                                             ev.preventDefault()
                                             ev.stopImmediatePropagation()
-
                                         }}>
                                         <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                                         <path d="M18 6l-12 12"></path>
@@ -709,12 +720,18 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
     return <div class={"absolute rounded-lg top-32 left-0 right-0 z-50 text-center w-fit max-w-full m-auto overflow-auto" + (hasMessage ? " bg-white dark:bg-black bg-opacity-40 dark:bg-opacity-25 backdrop-blur shadow-light dark:shadow-dark" : "") + (isSideBarOpen ? "" : " px-16")}>
         <div class="p-8">
             <p class="dark:text-zinc-100 mb-2">
-                <select value={openaiService} onChange={(ev) => { useConfigStore.setState({ openaiService: ev.currentTarget.value as any }) }} class="ml-2 px-2 text-zinc-600">
+                <select value={openaiService} onChange={(ev) => { useConfigStore.setState({ openaiService: ev.currentTarget.value as any }) }} class="ml-2 px-2 text-zinc-600 bg-zinc-200">
                     <option value="openai">OpenAI API</option>
                     <option value="openai-proxy">OpenAI API (custom endpoint)</option>
                     <option value="azure">Azure OpenAI Service</option>
                 </select>
             </p>
+            {hasMessage && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute right-3 top-3 cursor-pointer dark:stroke-slate-100" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
+                onClick={() => { useStore.setState({ shouldDisplayAPIKeyInputOverride: false }) }}>
+                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
+                <path d="M18 6l-12 12"></path>
+                <path d="M6 6l12 12"></path>
+            </svg>}
             {openaiService === "openai" && <>
                 <p>
                     <input
@@ -889,25 +906,10 @@ const BookmarkDialog = () => {
     return <dialog id="bookmark" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Bookmarks</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Content</th>
-                        {/* <th>Note</th> */}
-                        {/* <th>Modified at</th> */}
-                    </tr>
-                </thead>
-                <tbody>
-                    {bookmarks.map((b) => <tr class="cursor-pointer hover:bg-zinc-600"
-                        onClick={() => { api["message.show"](b.id) }}>
-                        <td class="px-2 whitespace-nowrap">{b.createdAt}</td>
-                        <td class="px-2 whitespace-nowrap max-w-[40vw] overflow-x-scroll py-4">{b.content}</td>
-                        {/* <td class="px-2">{b.note}</td> */}
-                        {/* <td class="px-2 whitespace-nowrap">{b.modifiedAt}</td> */}
-                    </tr>)}
-                </tbody>
-            </table>
+            {bookmarks.map((b) => <div class="cursor-pointer hover:bg-zinc-600 leading-1"
+                onClick={() => { api["message.show"](b.id) }}>
+                <span class="inline-block w-[80vw] px-2 whitespace-nowrap overflow-x-hidden overflow-ellipsis">{b.content}</span>
+            </div>)}
         </div>
     </dialog>
 }
@@ -1013,7 +1015,7 @@ const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
         loop()
         return () => { stop = true }
     }, [props.textareaRef])
-    return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mb-2 text-zinc-600 rounded cursor-pointer" onClick={() => { open("https://platform.openai.com/tokenizer") }}>{count}</span>
+    return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mr-2 mb-2 text-zinc-600 rounded cursor-pointer" onClick={() => { open("https://platform.openai.com/tokenizer") }}>{count}</span>
 }
 
 type AzureVoiceInfo = {
@@ -1065,6 +1067,8 @@ const TextToSpeechDialog = () => {
     const webSpeechAPILang = useConfigStore((s) => s.webSpeechAPILang)
     const webSpeechAPIPitch = useConfigStore((s) => s.webSpeechAPIPitch)
     const webSpeechAPIRate = useConfigStore((s) => s.webSpeechAPIRate)
+    const webSpeechAPIVoice = useConfigStore((s) => s.webSpeechAPIVoice)
+    const [webSpeechAPIVoices, setWebSpeechAPIVoices] = useState<SpeechSynthesisVoice[]>([])
     const [voiceList, setVoiceList] = useState<AzureVoiceInfo[]>([])
     const [isPasswordVisible, setIsPasswordVisible] = useState(false)
     const audioFeedback = useConfigStore((s) => s.audioFeedback)
@@ -1074,6 +1078,11 @@ const TextToSpeechDialog = () => {
         if (!res.ok) { return }
         setVoiceList(res.data)
     }
+    useEffect(() => {
+        if (ttsBackend === "web-speech-api" && window.speechSynthesis && window.speechSynthesis.getVoices) {
+            setWebSpeechAPIVoices(window.speechSynthesis.getVoices())
+        }
+    }, [ttsBackend])
 
     return <dialog id="text-to-speech" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
@@ -1188,6 +1197,19 @@ const TextToSpeechDialog = () => {
                                 autocomplete="off"
                                 class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
                                 placeholder="1.0"></input></td>
+                        </tr>
+                        <tr>
+                            <td>Voice</td>
+                            <td><select
+                                class="px-2 text-zinc-600"
+                                value={webSpeechAPIVoice}
+                                onChange={(ev) => {
+                                    useConfigStore.setState({ webSpeechAPIVoice: ev.currentTarget.value })
+                                }}
+                                autocomplete="off">
+                                <option value="default">default</option>
+                                {webSpeechAPIVoices.map((v) => <option value={v.name}>{v.name}</option>)}
+                            </select></td>
                         </tr>
                     </tbody>
                 </table>

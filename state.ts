@@ -87,27 +87,29 @@ class TextToSpeechQueue {
     private async prepare(content: string | null, messageIdForDeletion: MessageId | null, noCache: boolean = false): Promise<(() => Promise<void>) | void> {
         console.log(`text-to-speech: ${content?.length ?? "-"} characters`)
         if (content?.trim() === "") { return }
-        const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIPitch } = useConfigStore.getState()
+        const { ttsBackend, azureTTSRegion, azureTTSResourceKey, azureTTSVoice, azureTTSLang, pico2waveVoice, webSpeechAPILang, webSpeechAPIRate, webSpeechAPIVoice, webSpeechAPIPitch } = useConfigStore.getState()
         switch (ttsBackend) {
             case "off": {
                 break
             } case "web-speech-api": {
-                if (window.speechSynthesis) {
-                    return async () => {
-                        speechSynthesis.cancel()
-                        const utterance = new SpeechSynthesisUtterance(content ?? "Web Speech API")
-                        utterance.lang = webSpeechAPILang
-                        utterance.pitch = webSpeechAPIPitch
-                        utterance.rate = webSpeechAPIRate
-                        speechSynthesis.speak(utterance)
-                        return new Promise<void>((resolve, reject) => {
-                            utterance.addEventListener("end", () => { resolve() })
-                            utterance.addEventListener("pause", () => { resolve() })
-                            utterance.addEventListener("error", (ev) => { reject(new Error(ev.error)) })
-                        })
+                if (!window.speechSynthesis) { return }
+                return async () => {
+                    speechSynthesis.cancel()
+                    const utterance = new SpeechSynthesisUtterance(content ?? "Web Speech API")
+                    utterance.lang = webSpeechAPILang
+                    utterance.pitch = webSpeechAPIPitch
+                    utterance.rate = webSpeechAPIRate
+                    const voice = webSpeechAPIVoice === "default" ? null : window.speechSynthesis.getVoices().find((v) => v.name === webSpeechAPIVoice)
+                    if (voice) {
+                        utterance.voice = voice
                     }
+                    speechSynthesis.speak(utterance)
+                    return new Promise<void>((resolve, reject) => {
+                        utterance.addEventListener("end", () => { resolve() })
+                        utterance.addEventListener("pause", () => { resolve() })
+                        utterance.addEventListener("error", (ev) => { reject(new Error(ev.error)) })
+                    })
                 }
-                break
             } case "pico2wave": {
                 return async () => { await invoke("speak_pico2wave", { content: content ?? "pico2wave", lang: pico2waveVoice }) }
             } case "azure": {
@@ -169,6 +171,7 @@ const defaultConfigValues = {
     webSpeechAPILang: "en-US",
     webSpeechAPIPitch: 1,
     webSpeechAPIRate: 1,
+    webSpeechAPIVoice: "default",
     reversedView: 0,
     whisperLanguage: "",
     editVoiceInputBeforeSending: 0,
@@ -234,6 +237,7 @@ export type State = {
     isSideBarOpen: boolean
     editing: Set<MessageId>
     renamingThread: MessageId | null
+    shouldDisplayAPIKeyInputOverride: boolean
     openUsageDialog: () => void
     openBookmarkDialog: () => void
 }
@@ -251,6 +255,7 @@ let _useStore = create<State>()(() => ({
     isSideBarOpen: false,
     editing: new Set(),
     renamingThread: null,
+    shouldDisplayAPIKeyInputOverride: false,
     openUsageDialog: () => { },
     openBookmarkDialog: () => { }
 }))
