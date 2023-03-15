@@ -436,9 +436,9 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyV") {
             ev.preventDefault()
             if (useStore.getState().listening) {
-                api["microphone.stop"]
+                api["microphone.stop"]()
             } else {
-                api["microphone.start"]
+                api["microphone.start"]()
             }
         } else if (ctrlOrCmd(ev) && ev.shiftKey && ev.code === "KeyO") {
             ev.preventDefault()
@@ -482,7 +482,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             api["sideBar.show"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyB") {
             ev.preventDefault()
-            api["sideBar.toggle"]
+            api["sideBar.toggle"]()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyG") {
             ev.preventDefault()
             const id = api["activeThread.lastUserMessage"]()
