@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api"
+import { clipboard, invoke as _invoke } from "@tauri-apps/api"
 import { open, Command } from '@tauri-apps/api/shell'
 import { create } from "zustand"
 import Database from "tauri-plugin-sql-api"
@@ -10,6 +10,44 @@ import createTablesSQL from "./create_tables.sql?raw"
 // @ts-ignore
 import findParentsSQL from "./find_parents.sql?raw"
 import "element.scrollintoviewifneeded-polyfill"
+import Toastify from "toastify-js"
+
+type ChatMLMessage = { role: "assistant" | "user" | "system", name?: string, content: string }
+
+export const invoke = _invoke as any as {
+    (cmd: "sound_test"): Promise<void>
+    (cmd: "sound_focus_input"): Promise<void>
+    (cmd: "sound_waiting_text_completion"): Promise<void>
+    (cmd: "speak_azure", args: { messageId: number | null, region: string, resourceKey: string, ssml: string, beepVolume: number, preFetch: boolean, noCache: boolean }): Promise<string>
+    (cmd: "count_tokens", args: { content: string }): Promise<number>
+    (cmd: "speak_pico2wave", args: { content: string, lang: string }): Promise<void>
+    (cmd: "get_input_loudness"): Promise<number>
+    (cmd: "start_listening", args: { openaiKey: string, language: string }): Promise<string>
+    (cmd: "stop_listening"): Promise<void>
+    (cmd: "cancel_listening"): Promise<void>
+    (cmd: "start_chat_completion", args: { requestId: number, secretKey: string, body: string, endpoint: string, apiKeyAuthentication: boolean }): Promise<undefined>
+    (cmd: "stop_all_chat_completions"): Promise<void>
+    (cmd: "get_chat_completion", args: { requestId: number }): Promise<string[]>
+    (cmd: "stop_audio"): Promise<void>
+    (cmd: "count_tokens_gpt3_5_turbo_0301", args: { messages: ChatMLMessage[] }): Promise<number>
+}
+
+window.addEventListener("unhandledrejection", (err) => {
+    const text = err.reason + ""
+    const toast = Toastify({
+        text,
+        duration: -1,
+        close: true,
+        onClick: () => {
+            clipboard.writeText(text);
+            (toast.toastElement as HTMLElement).innerText = "Copied!"
+            setTimeout(() => {
+                toast.hideToast()
+            }, 1000)
+        },
+    })
+    toast.showToast()
+})
 
 /** Database connection. */
 export let db: { current: Database } = {} as any
@@ -52,6 +90,7 @@ class SplitLines {
 class TextToSpeechQueue {
     private readonly preparationQueue = new PQueue({ concurrency: 1 })
     private readonly audioQueue = new PQueue({ concurrency: 1 })
+    private readonly rejectedTtsIds = new Set<number>()
     private ttsId: number | null = null
 
     /** Clears the queue. */
@@ -73,6 +112,7 @@ class TextToSpeechQueue {
 
     /** Enqueues a text if the given textId is the same as the previous one. */
     async pushSegment(ttsId: number, content: string, messageIdForDeletion: MessageId | null) {
+        if (this.rejectedTtsIds.has(ttsId)) { return }
         if (this.ttsId !== ttsId) {
             this.preparationQueue.clear()
             this.audioQueue.clear()
@@ -81,6 +121,10 @@ class TextToSpeechQueue {
         const speak = this.preparationQueue.add(() => this.prepare(content, messageIdForDeletion))
         this.audioQueue.add(async () => {
             await (await speak)?.()
+        }).catch((err) => {
+            if (this.rejectedTtsIds.has(ttsId)) { return }
+            this.rejectedTtsIds.add(ttsId)
+            throw err
         })
     }
 
@@ -121,7 +165,7 @@ class TextToSpeechQueue {
                 // > https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/speech-synthesis-markup
                 await db.current.execute("INSERT INTO textToSpeechUsage (region, numCharacters) VALUES (?, ?)", [azureTTSRegion, pronouncedContent.length])
 
-                const res = await invoke<[ok: boolean, body: string]>("speak_azure", {
+                await invoke("speak_azure", {
                     messageId: messageIdForDeletion,
                     region: azureTTSRegion,
                     resourceKey: azureTTSResourceKey,
@@ -130,9 +174,8 @@ class TextToSpeechQueue {
                     preFetch: true,
                     noCache,
                 })
-                if (!res[0]) { console.error(res[1]); return }
                 return async () => {
-                    await invoke<[ok: boolean, body: string]>("speak_azure", {
+                    await invoke("speak_azure", {
                         messageId: messageIdForDeletion,
                         region: azureTTSRegion,
                         resourceKey: azureTTSResourceKey,
@@ -289,6 +332,7 @@ const reload = async (path: MessageId[]) => {
     useStore.setState({ visibleMessages })
     db.current.select<{ id: number, name: string | null }[]>("SELECT message.id as id, threadName.name as name FROM message LEFT OUTER JOIN threadName ON message.id = threadName.messageId WHERE message.parent IS NULL ORDER BY message.createdAt DESC")
         .then((threads) => { useStore.setState({ threads }) })
+
 }
 
 export const chatGPTPricePerToken = 0.002 / 1000
@@ -307,7 +351,9 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         }
 
         const maxCostPerMessage = +(await db.current.select<{ value: number }[]>("SELECT value FROM config WHERE key = 'maxCostPerMessage'"))[0]!.value
-        const messagesFed = messages.filter((v) => v.role !== "root").map((v) => ({ role: v.role, content: v.content }))
+        const messagesFed = messages
+            .flatMap((v) => v.role === "root" ? [] : [{ role: v.role, content: v.content }])
+            .map((v) => ({ role: v.role, content: v.content }))
         let numParentsFed = -1 // all
 
         // Drop messages
@@ -315,7 +361,7 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         let omitted = false
         while (true) {
             // TODO: performance optimization
-            const tokens = await invoke<number>("count_tokens", { content: messagesFed.map((v) => v.content).join(" ") }) + expectedGeneratedTokenCount
+            const tokens = await invoke("count_tokens_gpt3_5_turbo_0301", { messages: messagesFed }) + expectedGeneratedTokenCount
             const maxTokens = maxCostPerMessage / chatGPTPricePerToken
             if (tokens < maxTokens) {
                 break
@@ -339,15 +385,15 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
 
         const model = "gpt-3.5-turbo"
         let done = false
-        let err: string | null
+        let err: string | null | undefined
         const requestId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-        const dataFetchPromise = new Promise<PartialMessage>((resolve, reject) => {
-            const result: PartialMessage = { content: "", role: "assistant", status: 0 }
+        const dataFetchPromise = new Promise<PartialMessage & { role: "assistant" }>((resolve, reject) => {
+            const result: PartialMessage & { role: "assistant" } = { content: "", role: "assistant", status: 0 }
             const loop = async () => {
                 const done2 = done
                 try {
                     let delta = ""
-                    for (const v of await invoke<string[]>("get_chat_completion", { requestId })) {
+                    for (const v of await invoke("get_chat_completion", { requestId })) {
                         let partial: {
                             choices: {
                                 delta?: {
@@ -384,7 +430,7 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         try {
             const { APIKey, openaiService, azureEndpoint, azureApiKeyAuthentication, azureAPIKey, openaiProxyAPIKey, openaiProxyUrl } = useConfigStore.getState()
             if (openaiService === "azure") {
-                err = await invoke<string | null>("start_chat_completion", {
+                err = await invoke("start_chat_completion", {
                     requestId,
                     secretKey: azureAPIKey,
                     body: JSON.stringify({
@@ -394,9 +440,9 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
                     }),
                     endpoint: azureEndpoint,
                     apiKeyAuthentication: !!azureApiKeyAuthentication,
-                })
+                }).catch((err) => err + "")
             } else if (openaiService === "openai-proxy") {
-                err = await invoke<string | null>("start_chat_completion", {
+                err = await invoke("start_chat_completion", {
                     requestId,
                     secretKey: openaiProxyAPIKey,
                     body: JSON.stringify({
@@ -406,9 +452,9 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
                     }),
                     endpoint: openaiProxyUrl,
                     apiKeyAuthentication: false,
-                })
+                }).catch((err) => err + "")
             } else {  // openai
-                err = await invoke<string | null>("start_chat_completion", {
+                err = await invoke("start_chat_completion", {
                     requestId,
                     secretKey: APIKey,
                     body: JSON.stringify({
@@ -418,7 +464,7 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
                     }),
                     endpoint: "https://api.openai.com/v1/chat/completions",
                     apiKeyAuthentication: false,
-                })
+                }).catch((err) => err + "")
             }
         } finally {
             done = true
@@ -433,9 +479,10 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         } else {
             const result = await dataFetchPromise
             Promise.all([
-                invoke<number>("count_tokens", { content: messagesFed.join(" ") }),
-                invoke<number>("count_tokens", { content: result.content })
+                invoke("count_tokens_gpt3_5_turbo_0301", { messages: messagesFed }),
+                invoke("count_tokens_gpt3_5_turbo_0301", { messages: [result] })
             ]).then(([promptTokens, completionTokens]) => {
+                completionTokens -= 4 // "<im_start>" "assistant" "<im_start>" "assistant"
                 db.current.execute("INSERT INTO textCompletionUsage (model, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?)", [model, promptTokens, completionTokens, promptTokens + completionTokens])
             })
             return result
@@ -473,7 +520,7 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
         })
         const newMessage = await complete(
             await Promise.all(messages.map((v) =>
-                db.current.select<{ role: "user" | "assistant" | "system", content: string }[]>(
+                db.current.select<{ role: "user" | "assistant" | "system" | "root", content: string }[]>(
                     "SELECT role, content FROM message WHERE id = ?", [v]).then((records) => records[0]!))),
             async (content, delta) => {
                 splitLines.add(delta)

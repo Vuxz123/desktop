@@ -4,12 +4,12 @@ import ReactMarkdown from "react-markdown"
 import { open } from '@tauri-apps/api/shell'
 import { fetch } from '@tauri-apps/api/http'
 import hljs from "highlight.js"
-import { invoke, clipboard } from "@tauri-apps/api"
+import { clipboard } from "@tauri-apps/api"
 import { appWindow } from "@tauri-apps/api/window"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
-import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore } from "./state"
+import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore, invoke } from "./state"
 
 /** Renders markdown contents. */
 const Markdown = (props: { content: string }) => {
@@ -922,7 +922,7 @@ const InputVolumeIndicator = () => {
         let canceled = false
         const loop = async () => {
             if (canceled) { return }
-            const value = await invoke("get_input_volume") as number
+            const value = await invoke("get_input_loudness")
             if (value === -1) {
                 setTranscribing(true)
             } else {
@@ -1007,8 +1007,11 @@ const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
         let stop = false
         const loop = async () => {
             if (stop) { return }
-            setCount(await invoke<number>("count_tokens", {
-                content: [...useStore.getState().visibleMessages.map((v) => v.content), props.textareaRef.current?.value ?? ""].join(" "),
+            setCount(await invoke("count_tokens_gpt3_5_turbo_0301", {
+                messages: [
+                    ...useStore.getState().visibleMessages.flatMap((v) => v.role === "root" ? [] : [{ content: v.content, role: v.role }]),
+                    { content: props.textareaRef.current?.value ?? "", role: "user" },
+                ],
             }))
             setTimeout(loop, 500)
         }
@@ -1374,4 +1377,4 @@ const main = async () => {
     })
 }
 
-main().catch(console.error)
+main()

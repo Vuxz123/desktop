@@ -83,6 +83,30 @@ dialog::backdrop {
     background: #0000004f;
 }
 
+// Toastify js 1.12.0, https://github.com/apvarun/toastify-js, MIT license, Copyright (C) 2018 Varun A P
+.toastify {
+    @apply shadow-light dark:shadow-dark px-10 [&:has(.toast-close)]:pr-16 py-3 text-white inline-block fixed opacity-0 rounded z-50 right-4 top-[-150px] whitespace-nowrap overflow-x-hidden overflow-ellipsis cursor-pointer;
+    background: linear-gradient(135deg, #c8695d, #b04c30);
+    transition: all 0.1s cubic-bezier(0.215, 0.61, 0.355, 1);
+    max-width: calc(50% - 20px);
+    &.on {
+        opacity: 1;
+    }
+    .toast-close {
+        @apply absolute right-0 px-6 h-full top-0 [font-family:inherit] hover:bg-white hover:bg-opacity-10;
+    }
+}
+
+@media only screen and (max-width: 360px) {
+    .toastify-right {
+        margin-left: auto;
+        margin-right: auto;
+        left: 0;
+        right: 0;
+        max-width: fit-content;
+    }
+}
+
 pre code.hljs{display:block;overflow-x:auto;padding:1em}
 code.hljs{padding:3px 5px}
 .hljs{color:#d0d0d0;background:#282c34}

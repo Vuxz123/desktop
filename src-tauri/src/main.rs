@@ -21,10 +21,68 @@ use tempfile::NamedTempFile;
 static mut DB_PATH: Option<PathBuf> = None;
 static AUDIO_PLAYBACK_COUNTER: AtomicI64 = AtomicI64::new(0);
 
-async fn connect_db() -> Result<sqlx::SqliteConnection, Box<dyn std::error::Error>> {
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    SQLError(#[from] sqlx::Error),
+    #[error(transparent)]
+    JoinError(#[from] tokio::task::JoinError),
+    #[error(transparent)]
+    TauriAPIError(#[from] tauri::api::Error),
+    #[error(transparent)]
+    MPSCSendError(#[from] std::sync::mpsc::SendError<()>),
+    #[error(transparent)]
+    Utf8Error(#[from] std::str::Utf8Error),
+    #[error(transparent)]
+    ReqwestError(#[from] reqwest::Error),
+    #[error(transparent)]
+    RodioStreamError(#[from] rodio::StreamError),
+    #[error(transparent)]
+    RodioPlayError(#[from] rodio::PlayError),
+    #[error(transparent)]
+    RodioDecoderError(#[from] rodio::decoder::DecoderError),
+    #[error(transparent)]
+    TokenizerError(#[from] rust_tokenizers::error::TokenizerError),
+    #[error(transparent)]
+    CpalDefaultStreamConfigError(#[from] cpal::DefaultStreamConfigError),
+    #[error(transparent)]
+    CpalBuildStreamError(#[from] cpal::BuildStreamError),
+    #[error(transparent)]
+    CpalPlayStreamError(#[from] cpal::PlayStreamError),
+    #[error(transparent)]
+    HoundError(#[from] hound::Error),
+    #[error("{0}")]
+    SyncPoisonError(String),
+    #[error("{0}")]
+    StringError(String),
+    #[error("{0}")]
+    StatusIsNot200(String),
+}
+
+impl<T> From<std::sync::PoisonError<T>> for Error {
+    fn from(value: std::sync::PoisonError<T>) -> Self {
+        Error::SyncPoisonError(value.to_string())
+    }
+}
+
+impl serde::Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+async fn connect_db() -> Result<sqlx::SqliteConnection, Error> {
     Ok(sqlx::SqliteConnection::connect(&format!(
         "sqlite://{}?mode=rwc", // rwc = create file if not exists
-        unsafe { DB_PATH.clone() }.unwrap().to_str().unwrap()
+        unsafe { DB_PATH.clone() }
+            .ok_or_else(|| Error::StringError("DB_PATH is not initialized yet".to_string()))?
+            .to_str()
+            .ok_or_else(|| Error::StringError("to_str() on DB_PATH failed".to_string()))?
     ))
     .await?)
 }
@@ -69,7 +127,7 @@ fn main() {
             speak_azure,
             count_tokens,
             speak_pico2wave,
-            get_input_volume,
+            get_input_loudness,
             start_listening,
             stop_listening,
             cancel_listening,
@@ -77,65 +135,70 @@ fn main() {
             stop_all_chat_completions,
             get_chat_completion,
             stop_audio,
+            count_tokens_gpt3_5_turbo_0301,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 #[tauri::command]
-async fn sound_test() {
-    tokio::task::spawn_blocking(|| {
-        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-        let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+async fn sound_test() -> Result<(), Error> {
+    tokio::task::spawn_blocking(|| -> Result<(), Error> {
+        let (_stream, stream_handle) = rodio::OutputStream::try_default()?;
+        let sink = rodio::Sink::try_new(&stream_handle)?;
         sink.set_volume(0.5);
         sink.append(rodio::source::SineWave::new(256.0));
         std::thread::sleep(std::time::Duration::from_secs(1));
+        Ok(())
     })
-    .await
-    .unwrap();
+    .await??;
+    Ok(())
 }
 
 #[tauri::command]
-async fn sound_focus_input() {
-    tokio::task::spawn_blocking(|| {
-        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-        let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+async fn sound_focus_input() -> Result<(), Error> {
+    tokio::task::spawn_blocking(|| -> Result<(), Error> {
+        let (_stream, stream_handle) = rodio::OutputStream::try_default()?;
+        let sink = rodio::Sink::try_new(&stream_handle)?;
         sink.set_volume(0.5);
         sink.append(rodio::source::SineWave::new(880.0));
         std::thread::sleep(std::time::Duration::from_millis(100));
+        Ok(())
     })
-    .await
-    .unwrap();
+    .await??;
+    Ok(())
 }
 
 #[tauri::command]
-async fn sound_waiting_text_completion() {
-    tokio::task::spawn_blocking(|| {
-        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-        let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+async fn sound_waiting_text_completion() -> Result<(), Error> {
+    tokio::task::spawn_blocking(|| -> Result<(), Error> {
+        let (_stream, stream_handle) = rodio::OutputStream::try_default()?;
+        let sink = rodio::Sink::try_new(&stream_handle)?;
         sink.set_volume(0.5);
         sink.append(rodio::source::SineWave::new(440.0)); // A
         std::thread::sleep(std::time::Duration::from_millis(200));
+        Ok(())
     })
-    .await
-    .unwrap();
+    .await??;
+    Ok(())
 }
 
-async fn play_audio(data: Vec<u8>, precedence: i64) -> std::io::Result<()> {
+async fn play_audio(data: Vec<u8>, precedence: i64) -> Result<(), Error> {
     if data.is_empty() {
         return Ok(()); // fixes UnrecognizedFormat error
     }
-    tokio::task::spawn_blocking(move || {
-        let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
+    tokio::task::spawn_blocking(move || -> Result<(), Error> {
+        let (_stream, stream_handle) = rodio::OutputStream::try_default()?;
         // sink.set_volume(0.5);
-        let source = rodio::Decoder::new(std::io::Cursor::new(data)).unwrap();
-        let sink = rodio::Sink::try_new(&stream_handle).unwrap();
+        let source = rodio::Decoder::new(std::io::Cursor::new(data))?;
+        let sink = rodio::Sink::try_new(&stream_handle)?;
         sink.append(source);
         while !sink.empty() && precedence == AUDIO_PLAYBACK_COUNTER.load(Ordering::SeqCst) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
+        Ok(())
     })
-    .await?;
+    .await??;
     Ok(())
 }
 
@@ -145,7 +208,7 @@ async fn azure_text_to_speech_request(
     resource_key: String,
     ssml: String,
     no_cache: bool,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+) -> Result<Vec<u8>, Error> {
     // fetch in @tauri-apps/api/http in frontend seems not to support binary response body, and the webview didn't play the audio even if it is tied to a mouse event.
     let request = HttpRequestBuilder::new(
         "POST",
@@ -167,7 +230,7 @@ async fn azure_text_to_speech_request(
     let response = client.send(request).await?;
     let status = response.status();
     if status != 200 {
-        return Err(status.to_string().into());
+        return Err(Error::StatusIsNot200(status.to_string()));
     }
     let data = response.bytes().await?.data;
 
@@ -195,7 +258,8 @@ async fn azure_text_to_speech_request(
     Ok(data)
 }
 
-async fn speak_azure_inner(
+#[tauri::command]
+async fn speak_azure(
     message_id: Option<i64>,
     region: String,
     resource_key: String,
@@ -203,7 +267,7 @@ async fn speak_azure_inner(
     beep_volume: f32,
     pre_fetch: bool,
     no_cache: bool,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Error> {
     if no_cache && pre_fetch {
         return Ok("".to_owned());
     }
@@ -270,32 +334,6 @@ LIMIT 1
     Ok("".to_owned())
 }
 
-#[tauri::command]
-async fn speak_azure(
-    message_id: Option<i64>,
-    region: String,
-    resource_key: String,
-    ssml: String,
-    beep_volume: f32,
-    pre_fetch: bool,
-    no_cache: bool,
-) -> (bool, String) {
-    match speak_azure_inner(
-        message_id,
-        region,
-        resource_key,
-        ssml,
-        beep_volume,
-        pre_fetch,
-        no_cache,
-    )
-    .await
-    {
-        Ok(value) => (true, value),
-        Err(err) => (false, err.to_string()),
-    }
-}
-
 /// https://github.com/rust-lang/rust/issues/72353#issuecomment-1093729062
 pub struct AtomicF32 {
     storage: AtomicU32,
@@ -330,64 +368,64 @@ lazy_static::lazy_static! {
 
     /// [0, infty] -> volume
     /// -1 -> transcribing
-    static ref INPUT_VOLUME: AtomicF32 = AtomicF32::new(0.0);
+    static ref INPUT_LOUDNESS: AtomicF32 = AtomicF32::new(0.0);
 
     static ref CHAT_COMPLETION_RESPONSE: Arc<Mutex<HashMap<u64, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref CHAT_COMPLETION_CANCELED: Arc<Mutex<HashSet<u64>>> = Arc::new(Mutex::new(HashSet::new()));
 }
 
 #[tauri::command]
-async fn count_tokens(content: String) -> usize {
-    if let Some(&(_, count)) = TOKEN_COUNT_CACHE
-        .lock()
-        .unwrap()
-        .iter()
-        .find(|v| v.0 == content)
-    {
-        return count;
+async fn count_tokens(content: String) -> Result<usize, Error> {
+    if let Some(&(_, count)) = TOKEN_COUNT_CACHE.lock()?.iter().find(|v| v.0 == content) {
+        return Ok(count);
     }
 
     let count = {
         let content = content.clone();
-        tokio::task::spawn_blocking(move || {
-            Gpt2Tokenizer::from_file(VOCAB_FILE.path(), MERGES_FILE.path(), false)
-                .unwrap()
-                .encode(
-                    &content,
-                    None,
-                    usize::MAX,
-                    &TruncationStrategy::DoNotTruncate,
-                    0,
-                )
-                .token_ids
-                .len()
+        tokio::task::spawn_blocking(move || -> Result<usize, Error> {
+            Ok(
+                Gpt2Tokenizer::from_file(VOCAB_FILE.path(), MERGES_FILE.path(), false)?
+                    .encode(
+                        &content,
+                        None,
+                        usize::MAX,
+                        &TruncationStrategy::DoNotTruncate,
+                        0,
+                    )
+                    .token_ids
+                    .len(),
+            )
         })
-        .await
-        .unwrap()
+        .await??
     };
 
     {
-        let mut cache = TOKEN_COUNT_CACHE.lock().unwrap();
+        let mut cache = TOKEN_COUNT_CACHE.lock()?;
         cache.push_back((content, count));
-        if cache.len() > 10 {
+        if cache.len() > 100 {
             cache.pop_front();
         }
     }
 
-    count
+    Ok(count)
 }
 
 /// lang: en-US, en-GB, de-DE, es-ES, fr-FR, or it-IT
-async fn pico2wave(content: &str, lang: &str) -> std::io::Result<()> {
+#[tauri::command]
+async fn speak_pico2wave(content: String, lang: String) -> Result<(), Error> {
     let precedence = AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     let mut f = tempfile::Builder::new().suffix(".wav").tempfile()?;
-    let path = f.path().to_str().unwrap();
+    let path = f
+        .path()
+        .to_str()
+        .ok_or_else(|| Error::StringError(format!("{f:?}.to_str() failed")))?;
     let output = Command::new("pico2wave")
-        .args(&[&format!("-w={path}"), &format!("--lang={lang}"), content])
+        .args(&[&format!("-w={path}"), &format!("--lang={lang}"), &content])
         .output()?;
     if !output.status.success() {
-        let s: &str = std::str::from_utf8(&output.stderr).unwrap();
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, s));
+        return Err(Error::StringError(
+            std::str::from_utf8(&output.stderr)?.to_owned(),
+        ));
     }
     println!("{:?}", output.status.success());
     let mut buf = Vec::<u8>::new();
@@ -395,16 +433,6 @@ async fn pico2wave(content: &str, lang: &str) -> std::io::Result<()> {
     println!("{:?}", buf.len());
     play_audio(buf, precedence).await?;
     Ok(())
-}
-
-#[tauri::command]
-async fn speak_pico2wave(content: String, lang: String) {
-    pico2wave(&content, &lang).await.unwrap();
-}
-
-#[tokio::test]
-async fn test_pico2wave() {
-    pico2wave("hello", "en-US").await.unwrap();
 }
 
 static RECORDING_COUNTER: AtomicI64 = AtomicI64::new(0);
@@ -424,8 +452,8 @@ fn cancel_listening() {
 }
 
 #[tauri::command]
-fn get_input_volume() -> f32 {
-    INPUT_VOLUME.load(Ordering::SeqCst)
+fn get_input_loudness() -> f32 {
+    INPUT_LOUDNESS.load(Ordering::SeqCst)
 }
 
 #[tauri::command]
@@ -433,17 +461,18 @@ fn stop_audio() {
     AUDIO_PLAYBACK_COUNTER.fetch_add(1, Ordering::SeqCst);
 }
 
-async fn start_listening_inner(
-    openai_key: &str,
-    language: &str, // "" to auto-detect
-) -> Result<String, Box<dyn std::error::Error>> {
-    INPUT_VOLUME.store(0.0, Ordering::SeqCst);
-    let mut f = NamedTempFile::new().unwrap();
+#[tauri::command]
+async fn start_listening(
+    openai_key: String,
+    language: String, // "" to auto-detect
+) -> Result<String, Error> {
+    INPUT_LOUDNESS.store(0.0, Ordering::SeqCst);
+    let mut f = NamedTempFile::new()?;
 
     {
         let path = f.path().to_owned();
         let precedence = RECORDING_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
-        tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || -> Result<(), Error> {
             use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
             use cpal::SampleFormat;
             use dasp_sample::conv;
@@ -451,7 +480,7 @@ async fn start_listening_inner(
             let device = cpal::default_host()
                 .default_input_device()
                 .expect("Failed to get default input device");
-            let config = device.default_output_config().unwrap();
+            let config = device.default_output_config()?;
             let mut wav_writer = hound::WavWriter::create(
                 path,
                 hound::WavSpec {
@@ -460,36 +489,33 @@ async fn start_listening_inner(
                     bits_per_sample: 32,
                     sample_format: hound::SampleFormat::Float,
                 },
-            )
-            .unwrap();
+            )?;
 
             let channels = config.channels() as usize;
-            fn update_input_volume(samples: &[f32]) {
+            fn update_input_loudness(samples: &[f32]) {
                 let mut result = 0.0;
                 for x in samples {
                     result += (x * x) / samples.len() as f32;
                 }
-                INPUT_VOLUME.store(result.sqrt(), Ordering::SeqCst);
+                INPUT_LOUDNESS.store(result.sqrt(), Ordering::SeqCst);
             }
             macro_rules! build {
                 ($sample_format:pat, $sample_converter:expr) => {
-                    device
-                        .build_input_stream(
-                            &config.config(),
-                            move |data, _| {
-                                let mut f32_samples = vec![];
-                                for sample in data.chunks(channels) {
-                                    let sum: f32 = sample.iter().map($sample_converter).sum();
-                                    let avg = sum / channels as f32;
-                                    f32_samples.push(avg);
-                                    wav_writer.write_sample(avg).unwrap();
-                                }
-                                update_input_volume(&f32_samples);
-                            },
-                            |_| {},
-                            None,
-                        )
-                        .unwrap()
+                    device.build_input_stream(
+                        &config.config(),
+                        move |data, _| {
+                            let mut f32_samples = vec![];
+                            for sample in data.chunks(channels) {
+                                let sum: f32 = sample.iter().map($sample_converter).sum();
+                                let avg = sum / channels as f32;
+                                f32_samples.push(avg);
+                                wav_writer.write_sample(avg).unwrap();
+                            }
+                            update_input_loudness(&f32_samples);
+                        },
+                        |_| {},
+                        None,
+                    )?
                 };
             }
 
@@ -506,21 +532,23 @@ async fn start_listening_inner(
                 SampleFormat::F64 => build!(SampleFormat::F64, |&x| conv::f64::to_f32(x)),
                 _ => unimplemented!(),
             };
-            stream.play().unwrap();
+            stream.play()?;
 
             while precedence == RECORDING_COUNTER.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(50)); // `stream does` not implement Send`
             }
+
+            Ok(())
         })
-        .await?;
+        .await??;
         if precedence <= RECORDING_CANCELED.load(Ordering::SeqCst) {
             return Ok("".to_owned());
         }
     }
-    INPUT_VOLUME.store(-1f32, Ordering::SeqCst);
+    INPUT_LOUDNESS.store(-1f32, Ordering::SeqCst);
 
     let mut buf = vec![];
-    f.read_to_end(&mut buf).unwrap();
+    f.read_to_end(&mut buf)?;
     let mut body = HashMap::new();
     body.insert(
         "file".to_owned(),
@@ -532,7 +560,7 @@ async fn start_listening_inner(
     );
     body.insert("model".to_owned(), FormPart::Text("whisper-1".to_owned()));
     if !language.is_empty() {
-        body.insert("language".to_owned(), FormPart::Text(language.to_owned()));
+        body.insert("language".to_owned(), FormPart::Text(language));
     }
     let request =
         HttpRequestBuilder::new("POST", "https://api.openai.com/v1/audio/transcriptions")?
@@ -545,35 +573,24 @@ async fn start_listening_inner(
     let response = client.send(request).await?;
     let status = response.status();
     if status != 200 {
-        return Err(
-            (status.to_string() + ": " + &response.read().await.unwrap().data.to_string()).into(),
-        );
+        return Err(Error::StringError(format!(
+            "{}: {}",
+            status,
+            &response.read().await?.data
+        )));
     }
-    Ok(response
-        .read()
-        .await?
-        .data
+    let data = response.read().await?.data;
+    Ok(data
         .as_object()
-        .unwrap()
+        .ok_or_else(|| Error::StringError(format!("Unexpected response: {data}")))?
         .get("text")
-        .unwrap()
+        .ok_or_else(|| Error::StringError(format!("Unexpected response: {data}")))?
         .as_str()
-        .unwrap()
+        .ok_or_else(|| Error::StringError(format!("Unexpected response: {data}")))?
         .to_owned())
 }
 
-#[tauri::command]
-async fn start_listening(
-    openai_key: String,
-    language: String, // "" to auto-detect
-) -> String {
-    start_listening_inner(&openai_key, &language).await.unwrap() // todo: error handling
-}
-
-fn handle_chat_completion_server_event(
-    request_id: u64,
-    buf: &[u8],
-) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_chat_completion_server_event(request_id: u64, buf: &[u8]) -> Result<(), Error> {
     if !buf.starts_with(b"data: [DONE]") && buf.starts_with(b"data: ") {
         CHAT_COMPLETION_RESPONSE
             .lock()?
@@ -585,19 +602,21 @@ fn handle_chat_completion_server_event(
 }
 
 #[tauri::command]
-fn stop_all_chat_completions() {
-    for id in CHAT_COMPLETION_RESPONSE.lock().unwrap().keys() {
-        CHAT_COMPLETION_CANCELED.lock().unwrap().insert(*id);
+fn stop_all_chat_completions() -> Result<(), Error> {
+    for id in CHAT_COMPLETION_RESPONSE.lock()?.keys() {
+        CHAT_COMPLETION_CANCELED.lock()?.insert(*id);
     }
+    Ok(())
 }
 
-async fn start_chat_completion_inner(
+#[tauri::command]
+async fn start_chat_completion(
     request_id: u64,
     secret_key: String, // OpenAI API key or Azure Active Directory token
     body: String,
     endpoint: String, // use "https://api.openai.com/v1/chat/completions" for openai
     api_key_authentication: bool, // use false for openai, see https://learn.microsoft.com/en-us/azure/cognitive-services/openai/reference#authentication for azure
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Error> {
     let client = reqwest::Client::new()
         .post(endpoint)
         .header("Content-Type", "application/json");
@@ -610,9 +629,11 @@ async fn start_chat_completion_inner(
     let mut buf = Vec::<u8>::new();
     let mut is_prev_char_newline = false;
     if res.status() != 200 {
-        let text = res.text().await?;
-        println!("err: {}", text);
-        return Err(text.into());
+        return Err(Error::StatusIsNot200(format!(
+            "{}: {}",
+            res.status(),
+            res.text().await?
+        )));
     }
     while let Some(chunk) = res.chunk().await? {
         for value in chunk {
@@ -628,11 +649,7 @@ async fn start_chat_completion_inner(
             }
         }
 
-        if CHAT_COMPLETION_CANCELED
-            .lock()
-            .unwrap()
-            .contains(&request_id)
-        {
+        if CHAT_COMPLETION_CANCELED.lock()?.contains(&request_id) {
             return Ok(());
         }
     }
@@ -642,33 +659,37 @@ async fn start_chat_completion_inner(
 }
 
 #[tauri::command]
-async fn start_chat_completion(
-    request_id: u64,
-    secret_key: String,
-    body: String,
-    endpoint: String,
-    api_key_authentication: bool,
-) -> Option<String> {
-    if let Err(err) = start_chat_completion_inner(
-        request_id,
-        secret_key,
-        body,
-        endpoint,
-        api_key_authentication,
-    )
-    .await
-    {
-        Some(err.to_string())
-    } else {
-        None
-    }
-}
-
-#[tauri::command]
-async fn get_chat_completion(request_id: u64) -> Vec<String> {
-    let mut stream = CHAT_COMPLETION_RESPONSE.lock().unwrap();
+async fn get_chat_completion(request_id: u64) -> Result<Vec<String>, Error> {
+    let mut stream = CHAT_COMPLETION_RESPONSE.lock()?;
     let vec = stream.entry(request_id).or_default();
     let result = vec.clone();
     vec.clear();
-    result
+    Ok(result)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Message {
+    role: String,
+    name: Option<String>,
+    content: String,
+}
+
+/// https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
+#[tauri::command]
+async fn count_tokens_gpt3_5_turbo_0301(messages: Vec<Message>) -> Result<usize, Error> {
+    let mut num_tokens: usize = 0;
+
+    for message in messages {
+        num_tokens += 4; // "<im_start>" "\n" "<im_end>" "\n"
+        if let Some(name) = message.name {
+            num_tokens += count_tokens(name).await?;
+        } else {
+            num_tokens += count_tokens(message.role).await?
+        }
+        num_tokens += count_tokens(message.content).await?;
+    }
+
+    num_tokens += 2; // "<im_start>" "assistant"
+
+    Ok(num_tokens)
 }
