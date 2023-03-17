@@ -91,8 +91,8 @@ class SplitLines {
 }
 
 class TextToSpeechQueue {
-    private readonly preparationQueue = new PQueue({ concurrency: 1 })
-    private readonly audioQueue = new PQueue({ concurrency: 1 })
+    private preparationQueue = new PQueue({ concurrency: 1 })
+    private audioQueue = new PQueue({ concurrency: 1 })
     private readonly rejectedTtsIds = new Set<number>()
     private ttsId: number | null = null
 
@@ -102,8 +102,9 @@ class TextToSpeechQueue {
         if (window.speechSynthesis) {
             try { window.speechSynthesis.cancel() } catch { }
         }
-        this.preparationQueue.clear()
-        this.audioQueue.clear()
+        // .clear() does not work because it does not remove the running queue entry
+        this.preparationQueue = new PQueue({ concurrency: 1 })
+        this.audioQueue = new PQueue({ concurrency: 1 })
     }
 
     /** Clears the queue and enqueues the text. */
@@ -117,8 +118,8 @@ class TextToSpeechQueue {
     async pushSegment(ttsId: number, content: string, messageIdForDeletion: MessageId | null) {
         if (this.rejectedTtsIds.has(ttsId)) { return }
         if (this.ttsId !== ttsId) {
-            this.preparationQueue.clear()
-            this.audioQueue.clear()
+            this.preparationQueue = new PQueue({ concurrency: 1 })
+            this.audioQueue = new PQueue({ concurrency: 1 })
             this.ttsId = ttsId
         }
         const speak = this.preparationQueue.add(() => this.prepare(content, messageIdForDeletion))

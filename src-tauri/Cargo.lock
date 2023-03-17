@@ -84,7 +84,7 @@ checksum = "224afbd727c3d6e4b90103ece64b8d1b67fbb1973b1046c2281eed3f3803f800"
 
 [[package]]
 name = "app"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "base64 0.21.0",
  "cpal",
