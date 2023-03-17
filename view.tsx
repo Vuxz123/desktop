@@ -1,3 +1,5 @@
+import "core-js/es/array/find-last"  // Mac
+import "core-js/es/array/at"  // Mac
 import { render } from "preact"
 import { Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import ReactMarkdown from "react-markdown"

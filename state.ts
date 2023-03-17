@@ -11,7 +11,6 @@ import createTablesSQL from "./create_tables.sql?raw"
 import findParentsSQL from "./find_parents.sql?raw"
 import "element.scrollintoviewifneeded-polyfill"
 import Toastify from "toastify-js"
-import "core-js/es/array/find-last"  // Mac
 
 type ChatMLMessage = { role: "assistant" | "user" | "system", name?: string, content: string }
 
