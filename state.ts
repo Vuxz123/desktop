@@ -32,7 +32,10 @@ export const invoke = _invoke as any as {
     (cmd: "count_tokens_gpt3_5_turbo_0301", args: { messages: ChatMLMessage[] }): Promise<number>
 }
 
+class Canceled extends Error { }
+
 window.addEventListener("unhandledrejection", (err) => {
+    if (err.reason instanceof Canceled) { return }
     const text = err.reason + ""
     const toast = Toastify({
         text,
@@ -151,7 +154,15 @@ class TextToSpeechQueue {
                     return new Promise<void>((resolve, reject) => {
                         utterance.addEventListener("end", () => { resolve() })
                         utterance.addEventListener("pause", () => { resolve() })
-                        utterance.addEventListener("error", (ev) => { reject(new Error(ev.error)) })
+                        utterance.addEventListener("error", (ev) => {
+                            switch (ev.error) {
+                                case "interrupted": case "canceled":
+                                    reject(new Canceled())
+                                    break
+                                default:
+                                    reject(new Error(ev.error))
+                            }
+                        })
                     })
                 }
             } case "pico2wave": {
