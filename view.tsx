@@ -1356,7 +1356,13 @@ const main = async () => {
     }
     applyTheme()
     useConfigStore.subscribe((state, prev) => { if (state.theme !== prev.theme) { applyTheme() } })
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener("change", () => { applyTheme() })
+    const mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)')
+    if ("addEventListener" in mediaQueryList as any) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener("change", () => { applyTheme() })
+    } else {
+        // Mac
+        mediaQueryList.addListener(() => { applyTheme() })
+    }
 
     const args = (await getMatches()).args
     render(<App prompt={typeof args.prompt?.value === "string" ? args.prompt.value : undefined} send={args.send?.occurrences === 1} voiceInput={args["voice-input"]?.occurrences === 1} />, document.body)
