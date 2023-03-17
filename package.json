@@ -23,6 +23,7 @@
   "dependencies": {
     "@tauri-apps/api": "^1.2.0",
     "core-js": "^3.29.1",
+    "dialog-polyfill": "^0.5.6",
     "element.scrollintoviewifneeded-polyfill": "^1.0.1",
     "highlight.js": "^11.7.0",
     "p-queue": "^7.3.4",

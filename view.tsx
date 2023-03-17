@@ -12,6 +12,8 @@ import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
 import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore, invoke } from "./state"
+import dialogPolyfill from "dialog-polyfill"
+import { JSXInternal } from "preact/src/jsx"
 
 /** Renders markdown contents. */
 const Markdown = (props: { content: string }) => {
@@ -702,10 +704,10 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
         <InputVolumeIndicator />
         <BookmarkDialog />
         <PreferencesDialog />
-        <dialog
+        <Dialog
             id="contextmenu"
             class="m-0 px-0 py-[0.15rem] absolute left-0 top-0 z-30 flex flex-col bg-zinc-100 dark:bg-zinc-800 outline-gray-200 dark:outline-zinc-600 shadow-lg whitespace-pre rounded-lg [&:not([open])]:hidden [&::backdrop]:bg-transparent"
-            onClick={(ev) => { ev.currentTarget.close() }}></dialog>
+            onClick={(ev) => { ev.currentTarget.close() }}></Dialog>
     </>
 }
 
@@ -832,7 +834,7 @@ const PreferencesDialog = () => {
     const sidebar = useConfigStore((s) => s.sidebar)
     const searchEngine = useConfigStore((s) => s.searchEngine)
 
-    return <dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+    return <Dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Preferences</h2>
             <table>
@@ -890,7 +892,7 @@ What's the template URL for Bing?`)
                 </tbody>
             </table>
         </div>
-    </dialog>
+    </Dialog>
 }
 
 const BookmarkDialog = () => {
@@ -905,7 +907,7 @@ const BookmarkDialog = () => {
             }
         })
     }, [])
-    return <dialog id="bookmark" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+    return <Dialog id="bookmark" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Bookmarks</h2>
             {bookmarks.map((b) => <div class="cursor-pointer hover:bg-zinc-600 leading-1"
@@ -913,7 +915,7 @@ const BookmarkDialog = () => {
                 <span class="inline-block w-[80vw] px-2 whitespace-nowrap overflow-x-hidden overflow-ellipsis">{b.content}</span>
             </div>)}
         </div>
-    </dialog>
+    </Dialog>
 }
 
 const InputVolumeIndicator = () => {
@@ -1040,7 +1042,7 @@ type AzureVoiceInfo = {
 const SpeechToTextDialog = () => {
     const whisperLanguage = useConfigStore((s) => s.whisperLanguage)
     const editVoiceInputBeforeSending = useConfigStore((s) => !!s.editVoiceInputBeforeSending)
-    return <dialog id="speech-to-text" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+    return <Dialog id="speech-to-text" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Speech to text</h2>
             <h3 class="font-semibold my-2">Keybinding</h3>
@@ -1060,7 +1062,7 @@ const SpeechToTextDialog = () => {
                 <option value="disabled">no</option>
             </select>
         </div>
-    </dialog>
+    </Dialog>
 }
 
 const TextToSpeechDialog = () => {
@@ -1089,7 +1091,7 @@ const TextToSpeechDialog = () => {
         }
     }, [ttsBackend])
 
-    return <dialog id="text-to-speech" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+    return <Dialog id="text-to-speech" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Output Device</h2>
             <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
@@ -1225,7 +1227,17 @@ const TextToSpeechDialog = () => {
                 <option value="off">disabled</option>
             </select>
         </div>
-    </dialog>
+    </Dialog>
+}
+
+const Dialog = (props: JSXInternal.DOMAttributes<HTMLDialogElement> & { id?: string, class?: string }) => {
+    const ref = useRef<HTMLDialogElement>(null)
+    useEffect(() => {
+        if (isMac && ref.current) {
+            dialogPolyfill.registerDialog(ref.current)
+        }
+    }, [])
+    return <dialog ref={ref} {...props}></dialog>
 }
 
 const BudgetDialog = () => {
@@ -1257,7 +1269,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
         })
     }, [])
 
-    return <dialog id="budget" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg"
+    return <Dialog id="budget" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg"
         onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
         <div class="px-20 py-8 w-fit">
             <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Budget</h2>
@@ -1309,7 +1321,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
             </table>
             <div class="mt-8 italic text-zinc-300">The pricing information provided by this software is an estimate, and the hard-coded prices can be out of date.</div>
         </div>
-    </dialog>
+    </Dialog>
 }
 
 /** Regenerates an assistant's message. */
