@@ -1,5 +1,6 @@
 import "core-js/es/array/find-last"  // Mac
 import "core-js/es/array/at"  // Mac
+import dialogPolyfill from "dialog-polyfill"  // Mac
 import { render } from "preact"
 import { Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks"
 import ReactMarkdown from "react-markdown"
@@ -12,7 +13,6 @@ import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
 import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore, invoke } from "./state"
-import dialogPolyfill from "dialog-polyfill"
 import { JSXInternal } from "preact/src/jsx"
 
 /** Renders markdown contents. */

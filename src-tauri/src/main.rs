@@ -88,8 +88,12 @@ async fn connect_db() -> Result<sqlx::SqliteConnection, Error> {
 }
 
 fn main() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+    let mut builder = tauri::Builder::default();
+    if !cfg!(target_os = "macos") {
+        // Causes rendering issues on Mac
+        builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    }
+    builder
         .plugin(tauri_plugin_sql::Builder::default().build())
         .setup(|context| {
             match context.get_cli_matches() {

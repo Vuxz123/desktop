@@ -79,7 +79,9 @@
     100% { opacity: 0; }
 }
 
-dialog::backdrop {
+dialog::backdrop,
+dialog + .backdrop  // polyfill
+{
     background: #0000004f;
 }
 
