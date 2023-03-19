@@ -235,6 +235,7 @@ const defaultConfigValues = {
     openaiProxyAPIKey: "",
     openaiProxyUrl: "",
     searchEngine: `https://www.google.com/search?q={searchTerms}`,
+    zoomLevel: 0,
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -929,5 +930,15 @@ export const api = {
         const records = await db.current.select<{ content: string }[]>("SELECT content FROM message WHERE id = ?", [id])
         if (records.length === 0) { return } // TODO
         open(useConfigStore.getState().searchEngine.replaceAll("{searchTerms}", encodeURIComponent(records[0]!.content)))
+    },
+    "window.zoomIn": async () => {
+        const zoomLevel = useConfigStore.getState().zoomLevel + 1
+        await useConfigStore.setState({ zoomLevel })
+        document.documentElement.style.fontSize = Math.round(1.2 ** zoomLevel * 100) + "%"
+    },
+    "window.zoomOut": async () => {
+        const zoomLevel = useConfigStore.getState().zoomLevel - 1
+        await useConfigStore.setState({ zoomLevel })
+        document.documentElement.style.fontSize = Math.round(1.2 ** zoomLevel * 100) + "%"
     },
 } satisfies Record<string, (...args: readonly any[]) => any>

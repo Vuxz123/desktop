@@ -117,6 +117,9 @@ const MessageRenderer = (props: { depth: number }) => {
     useEffect(() => {
         autoFitTextareaHeight()
     }, [editing, textareaRef])
+    useEventListener("resize", () => {
+        autoFitTextareaHeight()
+    })
 
     let processedContent = content
     if (isResponseInIntegratedTerminal && content?.trim()) {
@@ -412,7 +415,13 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             }
         }
 
-        if (ev.code === "Escape" && !document.querySelector("dialog[open]")) {
+        if (ctrlOrCmd(ev) && ev.key === "+") {
+            api["window.zoomIn"]()
+            autoFitTextareaHeight()  // todo: move to api
+        } else if (ctrlOrCmd(ev) && ev.key === "-") {
+            api["window.zoomOut"]()
+            autoFitTextareaHeight()
+        } else if (ev.code === "Escape" && !document.querySelector("dialog[open]")) {
             ev.preventDefault()
             useStore.getState().ttsQueue.cancel()
         } else if (ctrlOrCmd(ev) && ev.code === "KeyH") {
@@ -1341,7 +1350,7 @@ const RegenerateResponse = () => {
         </div>
     }
     if (canRegenerateResponse) {
-        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm whitespace-nowrap " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
             <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
                 <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
@@ -1378,23 +1387,11 @@ const main = async () => {
         mediaQueryList.addListener(() => { applyTheme() })
     }
 
+    // zoom
+    document.documentElement.style.fontSize = Math.round(1.2 ** useConfigStore.getState().zoomLevel * 100) + "%"
+
     const args = (await getMatches()).args
     render(<App prompt={typeof args.prompt?.value === "string" ? args.prompt.value : undefined} send={args.send?.occurrences === 1} voiceInput={args["voice-input"]?.occurrences === 1} />, document.body)
-}
-
-// Zoom in/out with ctrl(cmd)+plus/minus
-{
-    let zoomLevel = 0
-    window.addEventListener("keydown", (ev) => {
-        if (ctrlOrCmd(ev) && ev.key === "+") {
-            zoomLevel++
-            document.documentElement.style.fontSize = Math.round(1.2 ** zoomLevel * 100) + "%"
-        }
-        if (ctrlOrCmd(ev) && ev.key === "-") {
-            zoomLevel--
-            document.documentElement.style.fontSize = Math.round(1.2 ** zoomLevel * 100) + "%"
-        }
-    })
 }
 
 main()
