@@ -65,6 +65,7 @@ export type MessageId = number
 
 type Message = PartialMessage & {
     id: MessageId
+    model: string | null
     parent: number | null
     threadId: number
     createdAt: string
@@ -236,6 +237,8 @@ const defaultConfigValues = {
     openaiProxyUrl: "",
     searchEngine: `https://www.google.com/search?q={searchTerms}`,
     zoomLevel: 0,
+    gravatarEmail: "",
+    showAvatar: 1,
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -333,10 +336,10 @@ const setTextareaValueAndAutoResize = (textarea: HTMLTextAreaElement, value: str
  */
 const reload = async (path: MessageId[]) => {
     const visibleMessages: (Message & { children: Message[] })[] = []
-    let node = path.length === 0 ? undefined : (await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId WHERE id = ?", [path[0]!]))[0]
+    let node = path.length === 0 ? undefined : (await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId LEFT OUTER JOIN messageModel ON message.id = messageModel.messageId WHERE id = ?", [path[0]!]))[0]
     let depth = 1
     while (node) {
-        const children = await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId WHERE parent = ?", [node.id])
+        const children = await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId LEFT OUTER JOIN messageModel ON message.id = messageModel.messageId WHERE parent = ?", [node.id])
         visibleMessages.push({ ...node, children })
         node = children.find((v) => v.id === path[depth]) ?? children.at(-1)
         depth++
@@ -348,16 +351,34 @@ const reload = async (path: MessageId[]) => {
 
 }
 
-export const chatGPTPricePerToken = 0.002 / 1000
+export const getPricePerToken = (model: string): { prompt: number, generated: number } | null => {
+    if (model === "gpt-3.5-turbo" || model.startsWith("gpt-3.5-turbo-")) {
+        return { prompt: 0.002 / 1000, generated: 0.002 / 1000 }
+    }
+    if (model === "gpt-4-32k" || model.startsWith("gpt-4-32k-")) {
+        return { prompt: 0.03 / 1000, generated: 0.06 / 1000 }
+    }
+    if (model === "gpt-4" || model.startsWith("gpt-4-")) {
+        return { prompt: 0.06 / 1000, generated: 0.12 / 1000 }
+    }
+    return null
+}
 
-export const getTokenUsage = (now = new Date()) => db.current.select<{ model: string, sum: number, count: number }[]>(getTokenUsageSQL, [now.toISOString()])
+export const getTokenUsage = (now = new Date()) => db.current.select<{ model: string, prompt_tokens_sum: number, completion_tokens_sum: number, count: number }[]>(getTokenUsageSQL, [now.toISOString()])
 
 /** Generates an assistant's response. */
-const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[], handleStream?: (content: string, delta: string) => Promise<void>): Promise<PartialMessage> => {
+const complete = async (messages: readonly Pick<PartialMessage, "role" | "content">[], model: string, handleStream?: (content: string, delta: string) => Promise<void>): Promise<PartialMessage> => {
     try {
         const usage = await getTokenUsage()
         if (
-            usage.map((v) => v.model === "gpt-3.5-turbo" ? v.sum * chatGPTPricePerToken : 0).reduce((a, b) => a + b, 0)
+            usage.map((v) => {
+                const pricePerToken = getPricePerToken(v.model)
+                if (pricePerToken === null) {
+                    console.warn(`price not known: ${v.model}`)
+                    return 0
+                }
+                return v.prompt_tokens_sum * pricePerToken.prompt + v.completion_tokens_sum * pricePerToken.generated
+            }).reduce((a, b) => a + b, 0)
             >= +(await db.current.select<{ value: number }[]>("SELECT value FROM config WHERE key = 'budget'"))[0]!.value
         ) {
             return { role: "assistant", status: 1, content: "Monthly budget exceeded." }
@@ -372,20 +393,23 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         // Drop messages
         const expectedGeneratedTokenCount = 150
         let omitted = false
-        while (true) {
-            // TODO: performance optimization
-            const tokens = await invoke("count_tokens_gpt3_5_turbo_0301", { messages: messagesFed }) + expectedGeneratedTokenCount
-            const maxTokens = maxCostPerMessage / chatGPTPricePerToken
-            if (tokens < maxTokens) {
-                break
-            }
-            if (messagesFed.length > 1) {
-                messagesFed.splice(0, 1)  // drop the oldest message
-                numParentsFed = messagesFed.length
-            } else {
-                const content = messagesFed[0]!.content
-                messagesFed[0]!.content = content.slice(0, Math.floor(content.length * maxTokens / tokens * 0.9))  // cut tail
-                omitted = true
+        const price = getPricePerToken(model)
+        if (price) {
+            while (true) {
+                // TODO: performance optimization
+                const tokens = await invoke("count_tokens_gpt3_5_turbo_0301", { messages: messagesFed }) + expectedGeneratedTokenCount * (price.generated / price.prompt)
+                const maxTokens = maxCostPerMessage / price.prompt
+                if (tokens < maxTokens) {
+                    break
+                }
+                if (messagesFed.length > 1) {
+                    messagesFed.splice(0, 1)  // drop the oldest message
+                    numParentsFed = messagesFed.length
+                } else {
+                    const content = messagesFed[0]!.content
+                    messagesFed[0]!.content = content.slice(0, Math.floor(content.length * maxTokens / tokens * 0.9))  // cut tail
+                    omitted = true
+                }
             }
         }
         if (omitted) {
@@ -396,7 +420,6 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         console.log(`numParentsFed: ${numParentsFed}`)
         console.log(messagesFed)
 
-        const model = "gpt-3.5-turbo"
         let done = false
         let err: string | null | undefined
         const requestId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
@@ -507,13 +530,16 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
 }
 
 /** Appends a message to the thread and returns its path. */
-const appendMessage = async (parents: readonly number[], message: Readonly<PartialMessage>) => {
+const appendMessage = async (parents: readonly number[], message: Readonly<PartialMessage>, model?: string) => {
     let id: number
     if (parents.length === 0) {
         // fixes: cannot store TEXT value in INTEGER column message.parent
         id = (await db.current.execute("INSERT INTO message (parent, role, status, content) VALUES (NULL, ?, ?, ?) RETURNING id", [message.role, message.status, message.content])).lastInsertId
     } else {
         id = (await db.current.execute("INSERT INTO message (parent, role, status, content) VALUES (?, ?, ?, ?) RETURNING id", [parents.at(-1)!, message.role, message.status, message.content])).lastInsertId
+    }
+    if (model) {
+        await db.current.execute("INSERT INTO messageModel (messageId, model) VALUES (?, ?)", [id, model])
     }
     await reload([...parents, id])
     return [...parents, id]
@@ -523,7 +549,8 @@ export const extractFirstCodeBlock = (content: string) => /```[^\n]*\n*([\s\S]*?
 
 /** Generates an assistant's response and appends it to the thread. */
 const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ message: PartialMessage, path: MessageId[] }> => {
-    const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 })
+    const model = "gpt-3.5-turbo"
+    const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 }, model)
     const id = path.at(-1)!
     useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
     try {
@@ -535,6 +562,7 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
             await Promise.all(messages.map((v) =>
                 db.current.select<{ role: "user" | "assistant" | "system" | "root", content: string }[]>(
                     "SELECT role, content FROM message WHERE id = ?", [v]).then((records) => records[0]!))),
+            model,
             async (content, delta) => {
                 splitLines.add(delta)
                 await db.current.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
@@ -689,7 +717,7 @@ export const api = {
 
         const res = await complete([
             { role: "user", content: `What is the topic of the following message? Answer using only a few words, and refrain from adding any additional comments beyond the topic name.\n\nMessage:${firstUserMessage}` }
-        ])
+        ], "gpt-3.5-turbo")
         if (!res.status) {
             res.content = res.content.trim()
             let m: RegExpExecArray | null

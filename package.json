@@ -12,6 +12,7 @@
   "license": "GPL v3",
   "devDependencies": {
     "@preact/preset-vite": "^2.5.0",
+    "@types/md5": "^2.3.2",
     "@types/toastify-js": "^1.11.1",
     "autoprefixer": "^10.4.13",
     "sass": "^1.58.3",
@@ -27,6 +28,7 @@
     "dialog-polyfill": "^0.5.6",
     "element.scrollintoviewifneeded-polyfill": "^1.0.1",
     "highlight.js": "^11.7.0",
+    "md5": "^2.3.0",
     "p-queue": "^7.3.4",
     "preact": "^10.13.0",
     "react-markdown": "^8.0.5",
