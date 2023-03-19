@@ -21,6 +21,7 @@
     "vite": "^4.1.4"
   },
   "dependencies": {
+    "@tabler/icons-react": "^2.10.0",
     "@tauri-apps/api": "^1.2.0",
     "core-js": "^3.29.1",
     "dialog-polyfill": "^0.5.6",

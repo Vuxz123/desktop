@@ -14,6 +14,7 @@ import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
 import { MessageId, State, api, chatGPTPricePerToken, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore, invoke } from "./state"
 import { JSXInternal } from "preact/src/jsx"
+import * as icon from "@tabler/icons-react"
 
 /** Renders markdown contents. */
 const Markdown = (props: { content: string }) => {
@@ -75,15 +76,8 @@ const CodeBlockCopyButton = (props: { content: string }) => {
         setCopied(true)
         setTimeout(() => { setCopied(false) }, 3000)
     }}>
-        {copied && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-check inline-block mr-2 [transform:translateY(-1px)]" width="16" height="16" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M5 12l5 5l10 -10"></path>
-        </svg>}
-        {!copied && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clipboard inline-block mr-2 [transform:translateY(-1px)]" width="16" height="16" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path>
-            <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path>
-        </svg>}
+        {copied && <icon.IconCheck size="1em" stroke={1.25} className="inline-block mr-2 [transform:translateY(-1px)]" />}
+        {!copied && <icon.IconClipboard size="1em" stroke={1.25} className="inline-block mr-2 [transform:translateY(-1px)]" />}
         {copied ? "Copied!" : "Copy code"}
     </div>
 }
@@ -158,66 +152,26 @@ const MessageRenderer = (props: { depth: number }) => {
                 {/* Play audio */}
                 <span title="Text-to-speech" class="text-zinc-600 absolute top-1 right-4 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { api["message.speak"](id!) }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-volume inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M15 8a5 5 0 0 1 0 8"></path>
-                        <path d="M17.7 5a9 9 0 0 1 0 14"></path>
-                        <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"></path>
-                    </svg>
-
-                    {/* TODO: stop */}
-                    {/* <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M5 5m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z"></path>
-                    </svg> */}
+                    <icon.IconVolume className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
                 </span>
 
                 {/* Search engine */}
                 {role === "user" && <span title="Search the web for this message" class="text-zinc-600 absolute top-1 right-16 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { api["message.google"](id!) }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-world-search inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M21 12a9 9 0 1 0 -9 9"></path>
-                        <path d="M3.6 9h16.8"></path>
-                        <path d="M3.6 15h7.9"></path>
-                        <path d="M11.5 3a17 17 0 0 0 0 18"></path>
-                        <path d="M12.5 3a16.984 16.984 0 0 1 2.574 8.62"></path>
-                        <path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path>
-                        <path d="M20.2 20.2l1.8 1.8"></path>
-                    </svg>
+                    <icon.IconWorldSearch className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
                 </span>}
 
                 {/* Edit */}
                 {role === "user" && <span title="Edit content" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { api["message.startEdit"](id!) }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-edit inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M7 7h-1a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-1"></path>
-                        <path d="M20.385 6.585a2.1 2.1 0 0 0 -2.97 -2.97l-8.415 8.385v3h3l8.385 -8.415z"></path>
-                        <path d="M16 5l3 3"></path>
-                    </svg>
+                    <icon.IconEdit className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
                 </span>}
-
-                {/* {role === "assistant" && <span title="Fact-check" class="text-zinc-600 absolute top-1 right-[5.5rem] select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
-                    onClick={() => { }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-book inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"></path>
-                        <path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"></path>
-                        <path d="M3 6l0 13"></path>
-                        <path d="M12 6l0 13"></path>
-                        <path d="M21 6l0 13"></path>
-                    </svg>
-                </span>} */}
 
                 {role === "assistant" && <CopyResponse content={content ?? ""} />}
 
                 {role === "assistant" && <span title="Bookmark" class="text-zinc-600 absolute top-1 right-10 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                     onClick={() => { api["message.toggleBookmark"](id!) }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline dark:stroke-zinc-300 dark:text-zinc-100" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill={bookmarked ? "currentColor" : "none"} stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2"></path>
-                    </svg>
+                    <icon.IconBookmark className="inline dark:stroke-zinc-300 dark:text-zinc-100" size="1.25em" strokeWidth={1.25} fill={bookmarked ? "currentColor" : "none"} />
                 </span>}
 
                 {/* Textarea */}
@@ -259,15 +213,8 @@ const CopyResponse = (props: { content: string }) => {
             setCopied(true)
             setTimeout(() => { setCopied(false) }, 3000)
         }}>
-        {copied && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-check inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M5 12l5 5l10 -10"></path>
-        </svg>}
-        {!copied && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-clipboard inline dark:stroke-zinc-300" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M9 5h-2a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-12a2 2 0 0 0 -2 -2h-2"></path>
-            <path d="M9 3m0 2a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2z"></path>
-        </svg>}
+        {copied && <icon.IconCheck className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />}
+        {!copied && <icon.IconClipboard className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth="1.25" />}
     </span>
 }
 
@@ -318,17 +265,8 @@ const ThreadListItem = (props: { i: number }) => {
         data-thread-id={id}
         onClick={() => { api["thread.open"](id!) }}
         onContextMenu={onContextMenu}>
-        {name !== "Integrated Terminal" && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-message inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M4 21v-13a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-9l-4 4"></path>
-            <path d="M8 9l8 0"></path>
-            <path d="M8 13l6 0"></path>
-        </svg>}
-        {name === "Integrated Terminal" && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-terminal inline mr-2" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M5 7l5 5l-5 5"></path>
-            <path d="M12 19l7 0"></path>
-        </svg>}
+        {name !== "Integrated Terminal" && <icon.IconMessage className="inline mr-2" size="1.25em" strokeWidth={2} />}
+        {name === "Integrated Terminal" && <icon.IconTerminal className="inline mr-2" size="1.25em" strokeWidth={1.25} />}
         {renaming ? "" : (searchQuery ? getHighlightedText(name, searchQuery) : name)}
         {renaming && <input
             ref={renameInputRef}
@@ -342,15 +280,7 @@ const ThreadListItem = (props: { i: number }) => {
             onChange={async (ev) => { await db.current.execute("INSERT OR REPLACE INTO threadName VALUES (?, ?)", [id, ev.currentTarget.value]) }}
             onBlur={async () => { api["thread.confirmTitle"]() }}
             onClick={(ev) => { ev.stopImmediatePropagation() }}></input>}
-        {active && !renaming && <svg xmlns="http://www.w3.org/2000/svg"
-            class="icon icon-tabler icon-tabler-dots absolute right-4 top-0 bottom-0 my-auto p-1 hover:bg-zinc-500 rounded-lg"
-            width="28" height="28" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
-            onClick={onContextMenu}>
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-            <path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path>
-            <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path>
-            <path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"></path>
-        </svg>}
+        {active && !renaming && <icon.IconDots className="absolute right-4 top-0 bottom-0 my-auto p-1 hover:bg-zinc-500 rounded-lg" size="1.75em" strokeWidth={1.25} onClick={onContextMenu as any} />}
     </div>
 }
 
@@ -527,29 +457,16 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
 
     return <>
         {!isSideBarOpen && <div title="Open side bar" class="absolute top-4 left-4 cursor-pointer z-40 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:text-zinc-200 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); api["sideBar.show"]() }}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-menu-2" width="30" height="30" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M4 6l16 0"></path>
-                <path d="M4 12l16 0"></path>
-                <path d="M4 18l16 0"></path>
-            </svg>
+            <icon.IconMenu2 className="icon" size="1.875em" strokeWidth={1.25} />
         </div>}
         <div class="flex">
             <div class={"text-sm overflow-x-hidden whitespace-nowrap bg-zinc-800 dark:bg-zinc-900 h-[100vh] text-white flex flex-col relative" + (isSideBarOpen ? " w-80" : " w-0")}>
                 {isSideBarOpen && <div title="Close side bar" class="absolute top-5 right-4 cursor-pointer z-40 hover:bg-zinc-700 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); api["sideBar.hide"]() }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-chevrons-left" width="30" height="30" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M11 7l-5 5l5 5"></path>
-                        <path d="M17 7l-5 5l5 5"></path>
-                    </svg>
+                    <icon.IconChevronsLeft className="icon" size="1.875em" strokeWidth={1.25} />
                 </div>}
                 <div class="pl-4 pr-16 pb-2 pt-4">
                     <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-700" : " hover:bg-zinc-700 cursor-pointer")} onClick={() => { api["thread.new"]() }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-plus inline mr-4 [transform:translateY(-2px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                            <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                            <path d="M12 5l0 14"></path>
-                            <path d="M5 12l14 0"></path>
-                        </svg>
+                        <icon.IconPlus className="inline mr-4 [transform:translateY(-2px)]" size="1.25em" strokeWidth={2} />
                         New chat
                     </div>
                 </div>
@@ -562,22 +479,12 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
 
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={async (ev) => { ev.preventDefault(); api["dialog.bookmark"]() }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-bookmark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M9 4h6a2 2 0 0 1 2 2v14l-5 -3l-5 3v-14a2 2 0 0 1 2 -2"></path>
-                    </svg>
+                    <icon.IconBookmark className="inline mr-2 [transform:translateY(-1px)]" size="1.25em" strokeWidth={1.25} />
                     Bookmarks
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={async (ev) => { ev.preventDefault(); api["dialog.budget"]() }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-coins inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M9 14c0 1.657 2.686 3 6 3s6 -1.343 6 -3s-2.686 -3 -6 -3s-6 1.343 -6 3z"></path>
-                        <path d="M9 14v4c0 1.656 2.686 3 6 3s6 -1.344 6 -3v-4"></path>
-                        <path d="M3 6c0 1.072 1.144 2.062 3 2.598s4.144 .536 6 0c1.856 -.536 3 -1.526 3 -2.598c0 -1.072 -1.144 -2.062 -3 -2.598s-4.144 -.536 -6 0c-1.856 .536 -3 1.526 -3 2.598z"></path>
-                        <path d="M3 6v10c0 .888 .772 1.45 2 2"></path>
-                        <path d="M3 11c0 .888 .772 1.45 2 2"></path>
-                    </svg>
+                    <icon.IconCoins className="inline mr-2" size="1.25em" strokeWidth={1.25} />
                     Budget
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
@@ -585,41 +492,22 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                         ev.preventDefault()
                         useStore.setState((s) => ({ shouldDisplayAPIKeyInputOverride: !s.shouldDisplayAPIKeyInputOverride }))
                     }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-key inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M16.555 3.843l3.602 3.602a2.877 2.877 0 0 1 0 4.069l-2.643 2.643a2.877 2.877 0 0 1 -4.069 0l-.301 -.301l-6.558 6.558a2 2 0 0 1 -1.239 .578l-.175 .008h-1.172a1 1 0 0 1 -.993 -.883l-.007 -.117v-1.172a2 2 0 0 1 .467 -1.284l.119 -.13l.414 -.414h2v-2h2v-2l2.144 -2.144l-.301 -.301a2.877 2.877 0 0 1 0 -4.069l2.643 -2.643a2.877 2.877 0 0 1 4.069 0z"></path>
-                        <path d="M15 9h.01"></path>
-                    </svg>
+                    <icon.IconKey className="inline mr-2" size="1.25em" strokeWidth={1.25} />
                     OpenAI API key
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => { ev.preventDefault(); api["dialog.speaker"]() }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-volume inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M15 8a5 5 0 0 1 0 8"></path>
-                        <path d="M17.7 5a9 9 0 0 1 0 14"></path>
-                        <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5"></path>
-                    </svg>
+                    <icon.IconVolume className="inline mr-2" size="1.25em" strokeWidth={1.25} />
                     Text-to-speech / Audio feedback
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => { ev.preventDefault(); api["dialog.microphone"]() }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z"></path>
-                        <path d="M5 10a7 7 0 0 0 14 0"></path>
-                        <path d="M8 21l8 0"></path>
-                        <path d="M12 17l0 4"></path>
-                    </svg>
+                    <icon.IconMicrophone className="inline mr-2" size="1.25em" strokeWidth={1.25} />
                     Speech-to-text
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => { ev.preventDefault(); api["dialog.preferences"]() }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-settings inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"></path>
-                        <path d="M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"></path>
-                    </svg>
+                    <icon.IconSettings className="inline mr-2" size="1.25em" strokeWidth={1.25} />
                     Preferences
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
@@ -627,11 +515,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                         ev.preventDefault()
                         open("https://github.com/chatgptui/desktop")
                     }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-question-mark inline mr-2 [transform:translateY(-1px)]" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                        <path d="M8 8a3.5 3 0 0 1 3.5 -3h1a3.5 3 0 0 1 3.5 3a3 3 0 0 1 -2 3a3 4 0 0 0 -2 4"></path>
-                        <path d="M12 19l0 .01"></path>
-                    </svg>
+                    <icon.IconQuestionMark className="inline mr-2" size="1.25em" strokeWidth={1.25} />
                     About this app
                 </div>
             </div>
@@ -653,15 +537,11 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                                 <div class={"shadow-light text-center bg-zinc-100 py-3 relative cursor-pointer hover:bg-zinc-200 [&:has(svg:hover)]:bg-zinc-100 text-zinc-600 dark:shadow-dark rounded-lg bg-zinc100 flex-1 " + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}
                                     onClick={() => { api["console.runLatest"]() }}>
                                     Execute
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute top-0 bottom-0 my-auto right-0 p-2 hover:bg-zinc-300 dark:stroke-slate-100 rounded" width="40" height="40" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
-                                        onClick={(ev) => {
-                                            ev.preventDefault()
-                                            ev.stopImmediatePropagation()
-                                        }}>
-                                        <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                                        <path d="M18 6l-12 12"></path>
-                                        <path d="M6 6l12 12"></path>
-                                    </svg>
+                                    <icon.IconX className="absolute top-0 bottom-0 my-auto right-0 p-2 hover:bg-zinc-300 dark:stroke-slate-100 rounded" size="2.5em" strokeWidth={1.25} onClick={(ev) => {
+                                        ev.preventDefault()
+                                        // @ts-ignore
+                                        ev.stopImmediatePropagation()
+                                    }} />
                                 </div>
                             </div>
                         </>}
@@ -692,11 +572,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                                     class={"absolute bottom-2 right-5 cursor-pointer p-1"}
                                     onClick={() => { api["messageInput.submit"]() }}>
                                     {/* tabler-icons, MIT license, Copyright (c) 2020-2023 Paweł Kuna */}
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-send dark:stroke-slate-100" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.3" stroke="#000000" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                                        <line x1="10" y1="14" x2="21" y2="3" />
-                                        <path d="M21 3l-6.5 18a0.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a0.55 .55 0 0 1 0 -1l18 -6.5" />
-                                    </svg>
+                                    <icon.IconSend className="dark:stroke-slate-100" size="1.125em" strokeWidth={1.3} stroke="#000000" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                                 </div>
                             </div>
                             <div class="flex items-end">
@@ -739,12 +615,7 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
                     <option value="azure">Azure OpenAI Service</option>
                 </select>
             </p>
-            {hasMessage && <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute right-3 top-3 cursor-pointer dark:stroke-slate-100" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
-                onClick={() => { useStore.setState({ shouldDisplayAPIKeyInputOverride: false }) }}>
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M18 6l-12 12"></path>
-                <path d="M6 6l12 12"></path>
-            </svg>}
+            {hasMessage && <icon.IconX className="absolute right-3 top-3 cursor-pointer dark:stroke-slate-100" size="1.25em" strokeWidth={1.25} onClick={() => { useStore.setState({ shouldDisplayAPIKeyInputOverride: false }) }} />}
             {openaiService === "openai" && <>
                 <p>
                     <input
@@ -950,26 +821,16 @@ const InputVolumeIndicator = () => {
     if (!listening) { return <></> }
     return <div class="absolute top-[35%] left-0 right-0 mx-0 text-center z-50 pointer-events-none">
         <div class="bg-white dark:bg-zinc-700 w-fit inline-block p-8 rounded-lg shadow-light dark:shadow-dark pointer-events-auto relative">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x absolute right-3 top-3 cursor-pointer dark:stroke-slate-100" width="25" height="25" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"
-                onClick={() => { invoke("cancel_listening") }}>
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M18 6l-12 12"></path>
-                <path d="M6 6l12 12"></path>
-            </svg>
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-microphone inline-block dark:stroke-zinc-200" width="110" height="110" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M9 2m0 3a3 3 0 0 1 3 -3h0a3 3 0 0 1 3 3v5a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3z"></path>
-                <path d="M5 10a7 7 0 0 0 14 0"></path>
-                <path d="M8 21l8 0"></path>
-                <path d="M12 17l0 4"></path>
-            </svg>
+            <icon.IconX className="absolute right-3 top-3 cursor-pointer dark:stroke-slate-100" size="1.5625em" strokeWidth={1.25} onClick={() => { invoke("cancel_listening") }} />
+            <icon.IconMicrophone className="inline-block dark:stroke-zinc-200" size="6.875em" strokeWidth={1.25} />
             {transcribing && <div class="dark:text-zinc-100">
                 Transcribing...
             </div>}
             {!transcribing && <div class="h-3 w-44 mx-auto mt-4">
                 <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
                     <defs>
-                        <pattern id="pattern_green" patternUnits="userSpaceOnUse" width="13" height="13" patternTransform="rotate(0)">
+                        <pattern id="pattern_green" patternUnits="userSpaceOnUse" width="13" height="13"
+                            patternTransform="rotate(0)">
                             <line x1="0" y="0" x2="0" y2="13" stroke="#194d70" stroke-width="18" />
                         </pattern>
                         <pattern id="pattern_gray" patternUnits="userSpaceOnUse" width="13" height="13" patternTransform="rotate(0)">
@@ -984,10 +845,7 @@ const InputVolumeIndicator = () => {
                 onClick={() => {
                     invoke("stop_listening")
                 }}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop inline-block [transform:translateY(-1px)] mr-1" width="20" height="20" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                    <path d="M17 4h-10a3 3 0 0 0 -3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3 -3v-10a3 3 0 0 0 -3 -3z" stroke-width="0" fill="currentColor"></path>
-                </svg>
+                <icon.IconPlayerStop className="inline-block transform:-translate-y-1 mr-1" size="1.25em" strokeWidth={1.25} />
                 stop
             </div>}
         </div>
@@ -1342,20 +1200,13 @@ const RegenerateResponse = () => {
         return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => {
             invoke("stop_all_chat_completions")
         }}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-player-stop inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M5 5m0 2a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z"></path>
-            </svg>
+            <icon.IconPlayerStop className="inline mr-2" size="1.125em" strokeWidth={1.25} />
             Stop generating
         </div>
     }
     if (canRegenerateResponse) {
         return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm whitespace-nowrap " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-refresh inline mr-2" width="18" height="18" viewBox="0 0 24 24" stroke-width="1.25" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
-                <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
-                <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
-            </svg>
+            <icon.IconRefresh className="inline mr-2" size="1.125em" strokeWidth={1.25} />
             Regenerate response
         </div>
     }
