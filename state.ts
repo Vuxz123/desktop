@@ -790,7 +790,7 @@ export const api = {
         useStore.getState().ttsQueue.cancel()
         invoke("start_listening", { openaiKey: useConfigStore.getState().APIKey, language: useConfigStore.getState().whisperLanguage.trim() })
             .then((res) => {
-                db.current.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", (Date.now() - startTime) / 1000])
+                db.current.execute("INSERT INTO speechToTextUsage (model, durationMs) VALUES (?, ?)", ["whisper-1", Date.now() - startTime])
                 api["messageInput.set"](api["messageInput.get"]() + res as string)
                 if (!useConfigStore.getState().editVoiceInputBeforeSending) {
                     api["messageInput.submit"]()
