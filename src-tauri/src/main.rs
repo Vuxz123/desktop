@@ -291,7 +291,6 @@ SELECT audio FROM systemTTSCache WHERE ssml = ?1
 LIMIT 1
 ",
         )
-        .bind(message_id)
         .bind(ssml.clone())
         .fetch_optional(&mut conn)
         .await?;
