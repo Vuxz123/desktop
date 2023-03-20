@@ -768,7 +768,7 @@ const PreferencesDialog = () => {
                         </select></td>
                     </tr>
                     {showAvatar && <tr>
-                        <td>Avatar Email</td>
+                        <td>Avatar email</td>
                         <td><input
                             class="ml-2 bg-zinc-600 pl-2 rounded w-80 text-xs py-1"
                             value={gravatarEmail}
