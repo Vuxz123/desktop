@@ -552,7 +552,11 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
     const model = "gpt-3.5-turbo"
     const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 }, model)
     const id = path.at(-1)!
-    useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
+    useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id], scrollIntoView: id }))
+    let autoScroll = true
+    const onScroll = () => { autoScroll = false }
+    window.addEventListener("wheel", onScroll, { passive: true, once: true })
+    window.addEventListener("keydown", onScroll, { passive: true, once: true })
     try {
         const ttsId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         const splitLines = new SplitLines((line) => {
@@ -567,6 +571,7 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
                 splitLines.add(delta)
                 await db.current.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
                 reload(path)
+                if (autoScroll) { useStore.setState({ scrollIntoView: id }) }
             },
         )
         splitLines.end()
@@ -584,9 +589,10 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
             await db.current.execute("UPDATE message SET role = ?, status = ?, content = ? WHERE id = ?", [newMessage.role, newMessage.status, newMessage.content, id])
         }
         reload(path)
-        useStore.setState({ scrollIntoView: id })
         return { message: newMessage, path }
     } finally {
+        window.removeEventListener("wheel", onScroll)
+        window.removeEventListener("keydown", onScroll)
         useStore.setState((s) => ({ waitingAssistantsResponse: s.waitingAssistantsResponse.filter((v) => v !== id) }))
     }
 }
