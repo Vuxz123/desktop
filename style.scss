@@ -89,6 +89,9 @@ dialog + .backdrop  // polyfill
 .toastify {
     @apply shadow-light dark:shadow-dark px-10 [&:has(.toast-close)]:pr-16 py-3 text-white inline-block fixed opacity-0 rounded z-50 right-4 top-[-150px] whitespace-nowrap overflow-x-hidden overflow-ellipsis cursor-pointer;
     background: linear-gradient(135deg, #c8695d, #b04c30);
+    &.info {
+        background: linear-gradient(135deg, #979797, rgb(127, 127, 127));
+    }
     transition: all 0.1s cubic-bezier(0.215, 0.61, 0.355, 1);
     max-width: calc(50% - 20px);
     &.on {
