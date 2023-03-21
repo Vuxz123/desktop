@@ -231,7 +231,7 @@ const defaultConfigValues = {
     reversedView: 0,
     whisperLanguage: "",
     editVoiceInputBeforeSending: 0,
-    theme: "automatic" as "automatic" | "light" | "dark",
+    theme: "automatic" as "automatic" | "light" | "dark" | "light-3d",
     sidebar: "automatic" as "automatic" | "hide" | "show",
     openaiProxyAPIKey: "",
     openaiProxyUrl: "",

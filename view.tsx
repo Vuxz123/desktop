@@ -38,13 +38,13 @@ const Markdown = (props: { content: string, waiting: boolean }) => {
                     const lang = /language-(\w+)/.exec(className || '')?.[1]
                     const content = String(children).replace(/\n$/, '')
                     // The README of react-markdown uses react-syntax-highlighter for syntax highlighting but it freezes the app for a whole second when loading
-                    return <>
+                    return <div class="light-3d:[box-shadow:0_0_1rem_rgb(0,0,0,0.5)] rounded">
                         <div class="bg-gray-700 text-zinc-100 pb-1 pt-2 rounded-t flex">
                             <div class="flex-1 pl-4">{lang}</div>
                             <CodeBlockCopyButton content={content} />
                         </div>
                         <code class={"rounded-b " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
-                    </>
+                    </div>
                 },
                 a(props) {
                     return <a
@@ -146,7 +146,7 @@ const MessageRenderer = (props: { depth: number }) => {
     if (role === "root" || (role === "system" && isDefaultPrompt(content ?? ""))) {
         return <></>
     } else {
-        return <div ref={ref} class={"border-b border-b-zinc-200 dark:border-b-0 bg" + (status === 1 ? " bg-red-100 dark:bg-red-900" : role === "assistant" ? " bg-zinc-100 dark:bg-zinc-700" : "")}>
+        return <div ref={ref} class={"border-b border-b-zinc-200 dark:border-b-0 bg" + (status === 1 ? " bg-red-100 dark:bg-red-900" : role === "assistant" ? " bg-zinc-100 light-3d:bg-zinc-200 light-3d:bg-opacity-25 light-3d-floating-glass-sm dark:bg-zinc-700" : "")}>
             <div class={"max-w-3xl px-8 mx-auto relative"}>
                 <div class={"flex" + (showAvatar ? "" : " mb-1")}>
                     <div class="flex-1">
@@ -156,38 +156,38 @@ const MessageRenderer = (props: { depth: number }) => {
                         {/* Edit */}
                         {role === "user" && <span title="Edit content" class="text-zinc-600 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                             onClick={() => { api["message.startEdit"](id!) }}>
-                            <icon.IconEdit className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
+                            <icon.IconEdit className="inline stroke-zinc-500 dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
                         </span>}
                         {/* Search engine */}
                         {role === "user" && <span title="Search the web for this message" class="text-zinc-600 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                             onClick={() => { api["message.google"](id!) }}>
-                            <icon.IconWorldSearch className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
+                            <icon.IconWorldSearch className="inline stroke-zinc-500 dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
                         </span>}
                         {role === "assistant" && <CopyResponse content={content ?? ""} />}
                         {role === "assistant" && <span title="Bookmark" class="text-zinc-600 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                             onClick={() => { api["message.toggleBookmark"](id!) }}>
-                            <icon.IconBookmark className="inline dark:stroke-zinc-300 dark:text-zinc-100" size="1.25em" strokeWidth={1.25} fill={bookmarked ? "currentColor" : "none"} />
+                            <icon.IconBookmark className="inline stroke-zinc-500 dark:stroke-zinc-300 dark:text-zinc-100" size="1.25em" strokeWidth={1.25} fill={bookmarked ? "currentColor" : "none"} />
                         </span>}
                         {/* Play audio */}
                         <span title="Text-to-speech" class="text-zinc-600 select-none cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
                             onClick={() => { api["message.speak"](id!) }}>
-                            <icon.IconVolume className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
+                            <icon.IconVolume className="inline stroke-zinc-500 dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />
                         </span>
                     </div>
                 </div>
                 <div class="flex">
                     {showAvatar && <div class="mr-6">
                         {/* Avatar */}
-                        {showAvatar && role === "assistant" && <span class={"p-1 inline-block rounded-sm" + (isGPT4 ? " bg-black" : " bg-[rgb(16,163,127)]")}><svg width="41" height="41" viewBox="0 0 41 41" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-width="1.5" class="h-6 w-6 inline-block text-white"><path d="M37.5324 16.8707C37.9808 15.5241 38.1363 14.0974 37.9886 12.6859C37.8409 11.2744 37.3934 9.91076 36.676 8.68622C35.6126 6.83404 33.9882 5.3676 32.0373 4.4985C30.0864 3.62941 27.9098 3.40259 25.8215 3.85078C24.8796 2.7893 23.7219 1.94125 22.4257 1.36341C21.1295 0.785575 19.7249 0.491269 18.3058 0.500197C16.1708 0.495044 14.0893 1.16803 12.3614 2.42214C10.6335 3.67624 9.34853 5.44666 8.6917 7.47815C7.30085 7.76286 5.98686 8.3414 4.8377 9.17505C3.68854 10.0087 2.73073 11.0782 2.02839 12.312C0.956464 14.1591 0.498905 16.2988 0.721698 18.4228C0.944492 20.5467 1.83612 22.5449 3.268 24.1293C2.81966 25.4759 2.66413 26.9026 2.81182 28.3141C2.95951 29.7256 3.40701 31.0892 4.12437 32.3138C5.18791 34.1659 6.8123 35.6322 8.76321 36.5013C10.7141 37.3704 12.8907 37.5973 14.9789 37.1492C15.9208 38.2107 17.0786 39.0587 18.3747 39.6366C19.6709 40.2144 21.0755 40.5087 22.4946 40.4998C24.6307 40.5054 26.7133 39.8321 28.4418 38.5772C30.1704 37.3223 31.4556 35.5506 32.1119 33.5179C33.5027 33.2332 34.8167 32.6547 35.9659 31.821C37.115 30.9874 38.0728 29.9178 38.7752 28.684C39.8458 26.8371 40.3023 24.6979 40.0789 22.5748C39.8556 20.4517 38.9639 18.4544 37.5324 16.8707ZM22.4978 37.8849C20.7443 37.8874 19.0459 37.2733 17.6994 36.1501C17.7601 36.117 17.8666 36.0586 17.936 36.0161L25.9004 31.4156C26.1003 31.3019 26.2663 31.137 26.3813 30.9378C26.4964 30.7386 26.5563 30.5124 26.5549 30.2825V19.0542L29.9213 20.998C29.9389 21.0068 29.9541 21.0198 29.9656 21.0359C29.977 21.052 29.9842 21.0707 29.9867 21.0902V30.3889C29.9842 32.375 29.1946 34.2791 27.7909 35.6841C26.3872 37.0892 24.4838 37.8806 22.4978 37.8849ZM6.39227 31.0064C5.51397 29.4888 5.19742 27.7107 5.49804 25.9832C5.55718 26.0187 5.66048 26.0818 5.73461 26.1244L13.699 30.7248C13.8975 30.8408 14.1233 30.902 14.3532 30.902C14.583 30.902 14.8088 30.8408 15.0073 30.7248L24.731 25.1103V28.9979C24.7321 29.0177 24.7283 29.0376 24.7199 29.0556C24.7115 29.0736 24.6988 29.0893 24.6829 29.1012L16.6317 33.7497C14.9096 34.7416 12.8643 35.0097 10.9447 34.4954C9.02506 33.9811 7.38785 32.7263 6.39227 31.0064ZM4.29707 13.6194C5.17156 12.0998 6.55279 10.9364 8.19885 10.3327C8.19885 10.4013 8.19491 10.5228 8.19491 10.6071V19.808C8.19351 20.0378 8.25334 20.2638 8.36823 20.4629C8.48312 20.6619 8.64893 20.8267 8.84863 20.9404L18.5723 26.5542L15.206 28.4979C15.1894 28.5089 15.1703 28.5155 15.1505 28.5173C15.1307 28.5191 15.1107 28.516 15.0924 28.5082L7.04046 23.8557C5.32135 22.8601 4.06716 21.2235 3.55289 19.3046C3.03862 17.3858 3.30624 15.3413 4.29707 13.6194ZM31.955 20.0556L22.2312 14.4411L25.5976 12.4981C25.6142 12.4872 25.6333 12.4805 25.6531 12.4787C25.6729 12.4769 25.6928 12.4801 25.7111 12.4879L33.7631 17.1364C34.9967 17.849 36.0017 18.8982 36.6606 20.1613C37.3194 21.4244 37.6047 22.849 37.4832 24.2684C37.3617 25.6878 36.8382 27.0432 35.9743 28.1759C35.1103 29.3086 33.9415 30.1717 32.6047 30.6641C32.6047 30.5947 32.6047 30.4733 32.6047 30.3889V21.188C32.6066 20.9586 32.5474 20.7328 32.4332 20.5338C32.319 20.3348 32.154 20.1698 31.955 20.0556ZM35.3055 15.0128C35.2464 14.9765 35.1431 14.9142 35.069 14.8717L27.1045 10.2712C26.906 10.1554 26.6803 10.0943 26.4504 10.0943C26.2206 10.0943 25.9948 10.1554 25.7963 10.2712L16.0726 15.8858V11.9982C16.0715 11.9783 16.0753 11.9585 16.0837 11.9405C16.0921 11.9225 16.1048 11.9068 16.1207 11.8949L24.1719 7.25025C25.4053 6.53903 26.8158 6.19376 28.2383 6.25482C29.6608 6.31589 31.0364 6.78077 32.2044 7.59508C33.3723 8.40939 34.2842 9.53945 34.8334 10.8531C35.3826 12.1667 35.5464 13.6095 35.3055 15.0128ZM14.2424 21.9419L10.8752 19.9981C10.8576 19.9893 10.8423 19.9763 10.8309 19.9602C10.8195 19.9441 10.8122 19.9254 10.8098 19.9058V10.6071C10.8107 9.18295 11.2173 7.78848 11.9819 6.58696C12.7466 5.38544 13.8377 4.42659 15.1275 3.82264C16.4173 3.21869 17.8524 2.99464 19.2649 3.1767C20.6775 3.35876 22.0089 3.93941 23.1034 4.85067C23.0427 4.88379 22.937 4.94215 22.8668 4.98473L14.9024 9.58517C14.7025 9.69878 14.5366 9.86356 14.4215 10.0626C14.3065 10.2616 14.2466 10.4877 14.2479 10.7175L14.2424 21.9419ZM16.071 17.9991L20.4018 15.4978L24.7325 17.9975V22.9985L20.4018 25.4983L16.071 22.9985V17.9991Z" fill="currentColor"></path></svg></span>}
-                        {showAvatar && role === "user" && <span class="inline-block w-[2.1rem]"><img class="inline-block rounded-sm cursor-pointer hover:opacity-75 w-full" src={gravatarUrl} onClick={() => { api["dialog.preferences"]() }}></img></span>}
+                        {showAvatar && role === "assistant" && <span class={"p-1 light-3d:shadow-dark inline-block rounded-sm" + (isGPT4 ? " bg-black" : " bg-[rgb(16,163,127)]")}><svg width="41" height="41" viewBox="0 0 41 41" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-width="1.5" class="h-6 w-6 inline-block text-white"><path d="M37.5324 16.8707C37.9808 15.5241 38.1363 14.0974 37.9886 12.6859C37.8409 11.2744 37.3934 9.91076 36.676 8.68622C35.6126 6.83404 33.9882 5.3676 32.0373 4.4985C30.0864 3.62941 27.9098 3.40259 25.8215 3.85078C24.8796 2.7893 23.7219 1.94125 22.4257 1.36341C21.1295 0.785575 19.7249 0.491269 18.3058 0.500197C16.1708 0.495044 14.0893 1.16803 12.3614 2.42214C10.6335 3.67624 9.34853 5.44666 8.6917 7.47815C7.30085 7.76286 5.98686 8.3414 4.8377 9.17505C3.68854 10.0087 2.73073 11.0782 2.02839 12.312C0.956464 14.1591 0.498905 16.2988 0.721698 18.4228C0.944492 20.5467 1.83612 22.5449 3.268 24.1293C2.81966 25.4759 2.66413 26.9026 2.81182 28.3141C2.95951 29.7256 3.40701 31.0892 4.12437 32.3138C5.18791 34.1659 6.8123 35.6322 8.76321 36.5013C10.7141 37.3704 12.8907 37.5973 14.9789 37.1492C15.9208 38.2107 17.0786 39.0587 18.3747 39.6366C19.6709 40.2144 21.0755 40.5087 22.4946 40.4998C24.6307 40.5054 26.7133 39.8321 28.4418 38.5772C30.1704 37.3223 31.4556 35.5506 32.1119 33.5179C33.5027 33.2332 34.8167 32.6547 35.9659 31.821C37.115 30.9874 38.0728 29.9178 38.7752 28.684C39.8458 26.8371 40.3023 24.6979 40.0789 22.5748C39.8556 20.4517 38.9639 18.4544 37.5324 16.8707ZM22.4978 37.8849C20.7443 37.8874 19.0459 37.2733 17.6994 36.1501C17.7601 36.117 17.8666 36.0586 17.936 36.0161L25.9004 31.4156C26.1003 31.3019 26.2663 31.137 26.3813 30.9378C26.4964 30.7386 26.5563 30.5124 26.5549 30.2825V19.0542L29.9213 20.998C29.9389 21.0068 29.9541 21.0198 29.9656 21.0359C29.977 21.052 29.9842 21.0707 29.9867 21.0902V30.3889C29.9842 32.375 29.1946 34.2791 27.7909 35.6841C26.3872 37.0892 24.4838 37.8806 22.4978 37.8849ZM6.39227 31.0064C5.51397 29.4888 5.19742 27.7107 5.49804 25.9832C5.55718 26.0187 5.66048 26.0818 5.73461 26.1244L13.699 30.7248C13.8975 30.8408 14.1233 30.902 14.3532 30.902C14.583 30.902 14.8088 30.8408 15.0073 30.7248L24.731 25.1103V28.9979C24.7321 29.0177 24.7283 29.0376 24.7199 29.0556C24.7115 29.0736 24.6988 29.0893 24.6829 29.1012L16.6317 33.7497C14.9096 34.7416 12.8643 35.0097 10.9447 34.4954C9.02506 33.9811 7.38785 32.7263 6.39227 31.0064ZM4.29707 13.6194C5.17156 12.0998 6.55279 10.9364 8.19885 10.3327C8.19885 10.4013 8.19491 10.5228 8.19491 10.6071V19.808C8.19351 20.0378 8.25334 20.2638 8.36823 20.4629C8.48312 20.6619 8.64893 20.8267 8.84863 20.9404L18.5723 26.5542L15.206 28.4979C15.1894 28.5089 15.1703 28.5155 15.1505 28.5173C15.1307 28.5191 15.1107 28.516 15.0924 28.5082L7.04046 23.8557C5.32135 22.8601 4.06716 21.2235 3.55289 19.3046C3.03862 17.3858 3.30624 15.3413 4.29707 13.6194ZM31.955 20.0556L22.2312 14.4411L25.5976 12.4981C25.6142 12.4872 25.6333 12.4805 25.6531 12.4787C25.6729 12.4769 25.6928 12.4801 25.7111 12.4879L33.7631 17.1364C34.9967 17.849 36.0017 18.8982 36.6606 20.1613C37.3194 21.4244 37.6047 22.849 37.4832 24.2684C37.3617 25.6878 36.8382 27.0432 35.9743 28.1759C35.1103 29.3086 33.9415 30.1717 32.6047 30.6641C32.6047 30.5947 32.6047 30.4733 32.6047 30.3889V21.188C32.6066 20.9586 32.5474 20.7328 32.4332 20.5338C32.319 20.3348 32.154 20.1698 31.955 20.0556ZM35.3055 15.0128C35.2464 14.9765 35.1431 14.9142 35.069 14.8717L27.1045 10.2712C26.906 10.1554 26.6803 10.0943 26.4504 10.0943C26.2206 10.0943 25.9948 10.1554 25.7963 10.2712L16.0726 15.8858V11.9982C16.0715 11.9783 16.0753 11.9585 16.0837 11.9405C16.0921 11.9225 16.1048 11.9068 16.1207 11.8949L24.1719 7.25025C25.4053 6.53903 26.8158 6.19376 28.2383 6.25482C29.6608 6.31589 31.0364 6.78077 32.2044 7.59508C33.3723 8.40939 34.2842 9.53945 34.8334 10.8531C35.3826 12.1667 35.5464 13.6095 35.3055 15.0128ZM14.2424 21.9419L10.8752 19.9981C10.8576 19.9893 10.8423 19.9763 10.8309 19.9602C10.8195 19.9441 10.8122 19.9254 10.8098 19.9058V10.6071C10.8107 9.18295 11.2173 7.78848 11.9819 6.58696C12.7466 5.38544 13.8377 4.42659 15.1275 3.82264C16.4173 3.21869 17.8524 2.99464 19.2649 3.1767C20.6775 3.35876 22.0089 3.93941 23.1034 4.85067C23.0427 4.88379 22.937 4.94215 22.8668 4.98473L14.9024 9.58517C14.7025 9.69878 14.5366 9.86356 14.4215 10.0626C14.3065 10.2616 14.2466 10.4877 14.2479 10.7175L14.2424 21.9419ZM16.071 17.9991L20.4018 15.4978L24.7325 17.9975V22.9985L20.4018 25.4983L16.071 22.9985V17.9991Z" fill="currentColor"></path></svg></span>}
+                        {showAvatar && role === "user" && <span class="inline-block w-[2.1rem]"><img class="light-3d:shadow-dark inline-block rounded-sm cursor-pointer hover:opacity-75 w-full" src={gravatarUrl} onClick={() => { api["dialog.preferences"]() }}></img></span>}
                     </div>}
-                    <div class="flex-1">
+                    <div class="flex-1 overflow-x-auto">
                         {/* Textarea */}
-                        {editing && <>
+                        {editing && <div class="p-1"> {/* padding is added to display the shadow */}
                             <textarea
                                 id={`messageEditTextarea${id}`}
                                 ref={textareaRef}
-                                class="w-full mt-2 p-2 shadow-light dark:shadow-dark dark:bg-zinc-700 rounded-lg resize-none"
+                                class="w-full p-2 bg-white light-3d:bg-opacity-20 light-3d-floating-glass shadow-light dark:shadow-dark dark:bg-zinc-700 rounded-lg resize-none"
                                 value={content}
                                 onKeyDown={(ev) => {
                                     if (ctrlOrCmd(ev) && ev.code === "Enter") {
@@ -197,10 +197,10 @@ const MessageRenderer = (props: { depth: number }) => {
                                 }}
                                 onInput={autoFitTextareaHeight}></textarea>
                             <div class="text-center">
-                                <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { api["editInput.submit"](id!) }}>Save & Submit</button>
-                                <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { api["editInput.cancel"](id!) }}>Cancel</button>
+                                <button class="inline rounded border dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 light-3d:shadow-light disabled:bg-zinc-400" onClick={() => { api["editInput.submit"](id!) }}>Save & Submit</button>
+                                <button class="inline rounded border dark:border-zinc-600 text-sm px-3 py-1 bg-white dark:bg-zinc-700 hover:bg-zinc-100 light-3d:shadow-light dark:hover:bg-zinc-600 disabled:bg-zinc-300 ml-2" onClick={() => { api["editInput.cancel"](id!) }}>Cancel</button>
                             </div>
-                        </>}
+                        </div>}
 
                         {/* Content */}
                         {(isFolded || editing) ? "" : (role === "assistant" || role === "system") ? <Markdown content={processedContent ?? ""} waiting={waiting}></Markdown> : <div class="whitespace-pre-wrap break-words select-text">{content}</div>}
@@ -228,8 +228,8 @@ const CopyResponse = (props: { content: string }) => {
             setCopied(true)
             setTimeout(() => { setCopied(false) }, 3000)
         }}>
-        {copied && <icon.IconCheck className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />}
-        {!copied && <icon.IconClipboard className="inline dark:stroke-zinc-300" size="1.25em" strokeWidth="1.25" />}
+        {copied && <icon.IconCheck className="inline stroke-zinc-500 dark:stroke-zinc-300" size="1.25em" strokeWidth={1.25} />}
+        {!copied && <icon.IconClipboard className="inline stroke-zinc-500 dark:stroke-zinc-300" size="1.25em" strokeWidth="1.25" />}
     </span>
 }
 
@@ -276,7 +276,7 @@ const ThreadListItem = (props: { i: number }) => {
         dialog.style.top = Math.min(ev.pageY, window.scrollY + window.innerHeight - rect.height - 5) + "px"
     }
 
-    return <div class={"pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative text-ellipsis pr-10" + (active ? " bg-zinc-700" : " hover:bg-zinc-600")}
+    return <div class={"pl-8 py-2 mb-1 cursor-pointer rounded-lg overflow-x-hidden relative text-ellipsis pr-10" + (active ? " bg-zinc-700 light-3d:bg-slate-700 light-3d:shadow-dark" : " hover:bg-zinc-600 light-3d:transition-colors light-3d:hover:bg-slate-600 light-3d:hover:bg-opacity-30 light-3d:hover:[box-shadow:0_0_1rem_rgba(0,0,0,0.3)]")}
         data-thread-id={id}
         onClick={() => { api["thread.open"](id!) }}
         onContextMenu={onContextMenu}>
@@ -302,7 +302,7 @@ const ThreadListItem = (props: { i: number }) => {
 /** Renders the search bar for threads. */
 const SearchBar = () => {
     const value = useStore((s) => s.search)
-    return <input class="w-full pl-8 py-2 bg-zinc-700 my-2"
+    return <input class="w-full pl-8 py-2 bg-zinc-700 light-3d:bg-white light-3d:bg-opacity-10 light-3d:focus-within:outline-none light-3d:focus-within:bg-opacity-[0.15] light-3d:shadow-light transition-colors my-2"
         value={value}
         onKeyDown={(ev) => { if (ev.code === "Enter") { useStore.setState({ search: ev.currentTarget.value }) } }}
         onBlur={(ev) => useStore.setState({ search: ev.currentTarget.value })}
@@ -475,12 +475,12 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             <icon.IconMenu2 className="icon" size="1.875em" strokeWidth={1.25} />
         </div>}
         <div class="flex">
-            <div class={"text-sm overflow-x-hidden whitespace-nowrap bg-zinc-800 dark:bg-zinc-900 h-[100vh] text-white flex flex-col relative" + (isSideBarOpen ? " w-80" : " w-0")}>
+            <div class={"text-sm overflow-x-hidden whitespace-nowrap bg-zinc-800 light-3d:bg-gradient-to-r light-3d:from-slate-900 light-3d:to-slate-700 dark:bg-zinc-900 h-[100vh] text-white flex flex-col relative" + (isSideBarOpen ? " w-80" : " w-0")}>
                 {isSideBarOpen && <div title="Close side bar" class="absolute top-5 right-4 cursor-pointer z-40 hover:bg-zinc-700 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); api["sideBar.hide"]() }}>
                     <icon.IconChevronsLeft className="icon" size="1.875em" strokeWidth={1.25} />
                 </div>}
                 <div class="pl-4 pr-16 pb-2 pt-4">
-                    <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-700" : " hover:bg-zinc-700 cursor-pointer")} onClick={() => { api["thread.new"]() }}>
+                    <div class={"px-4 py-2 rounded-lg border border-zinc-600" + (numMessages === 0 ? " bg-zinc-600 light-3d:bg-slate-600" : " hover:bg-zinc-700 light-3d:hover:bg-slate-700 cursor-pointer")} onClick={() => { api["thread.new"]() }}>
                         <icon.IconPlus className="inline mr-4 [transform:translateY(-2px)]" size="1.25em" strokeWidth={2} />
                         New chat
                     </div>
@@ -534,17 +534,18 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     About this app
                 </div>
             </div>
-            <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
+            <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white light-3d:[box-shadow:2rem_0_100rem_0rem_rgb(51,65,85,0.5)_inset] dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
+                {isSideBarOpen && <div class="hidden light-3d:block absolute z-50 top-0 left-0 h-full pointer-events-none select-none w-[0.4rem] bg-gradient-to-r from-[rgb(0,0,0,0.4)] to-transparent"></div>}
                 {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
                 <div id="mainScroller" class="flex-1 overflow-y-auto">
-                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-white dark:bg-zinc-800")}></div>}
+                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "")}></div>}
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
-                        <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
+                        <div class="mt-4 border-b border-b-zinc-600 border-opacity-10 pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
                     </div>}
                     {(reversed ? (x: number[]) => x.reverse() : (x: number[]) => x)([...Array(numMessages).keys()]).map((i) => <MessageRenderer key={i} depth={i} />)}
                     <div class="h-20"></div>
                 </div>
-                <div class={(reversed ? "top-4 left-0 right-0 mx-auto text-center absolute max-w-3xl px-8" : "pt-4 pb-4 relative bg-white dark:bg-zinc-800")}>
+                <div class={(reversed ? "top-4 left-0 right-0 mx-auto text-center absolute max-w-3xl px-8" : "pt-4 pb-4 px-8 relative light-3d:[box-shadow:0_0_2rem_rgba(0,0,0,0.15)]")}>
                     <RegenerateResponse />
                     <div class="leading-4 flex">
                         {isResponseInIntegratedTerminal && <>
@@ -561,7 +562,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                             </div>
                         </>}
                         {!isResponseInIntegratedTerminal && <>
-                            <div class={"shadow-light dark:shadow-dark rounded-lg bg-white relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
+                            <div class={"shadow-light dark:shadow-dark rounded-lg bg-white light-3d:bg-opacity-70 light-3d:focus-within:bg-opacity-50 light-3d:transition-colors light-3d-floating-glass relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
                                 <textarea
                                     id="userPromptTextarea"
                                     ref={textareaRef}
@@ -743,6 +744,7 @@ const PreferencesDialog = () => {
                         }}>
                             <option value="automatic">automatic</option>
                             <option value="light">light</option>
+                            <option value="light-3d">light 3D</option>
                             <option value="dark">dark</option>
                         </select></td>
                     </tr>
@@ -1233,7 +1235,7 @@ const RegenerateResponse = () => {
     const canRegenerateResponse = useStore((s) => s.visibleMessages.length >= 2 && s.visibleMessages.at(-1)?.role === "assistant")
     const waitingAssistantsResponse = useStore((s) => s.waitingAssistantsResponse.includes(s.visibleMessages.at(-1)?.id as number))
     if (waitingAssistantsResponse) {
-        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => {
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white light-3d:bg-opacity-50 light-3d-floating-glass dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => {
             invoke("stop_all_chat_completions")
         }}>
             <icon.IconPlayerStop className="inline mr-2" size="1.125em" strokeWidth={1.25} />
@@ -1241,7 +1243,7 @@ const RegenerateResponse = () => {
         </div>
     }
     if (canRegenerateResponse) {
-        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm whitespace-nowrap " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white light-3d:bg-opacity-50 light-3d-floating-glass dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm whitespace-nowrap " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
             <icon.IconRefresh className="inline mr-2" size="1.125em" strokeWidth={1.25} />
             Regenerate response
         </div>
@@ -1262,6 +1264,11 @@ const main = async () => {
         } else {
             document.documentElement.classList.remove("dark")
             localStorage.setItem("theme", "light")
+        }
+        if (theme === "light-3d") {
+            document.documentElement.classList.add("light-3d")
+        } else {
+            document.documentElement.classList.remove("light-3d")
         }
     }
     applyTheme()

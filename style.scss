@@ -37,12 +37,18 @@
 
     hr { @apply my-12; }
 
-    pre > code {
+    pre code {
         font-size: 95% !important;
+        .light-3d & {
+            -webkit-text-stroke: 2px rgba(255,255,255,0.1);
+        }
     }
 
-    code:not(pre > code) {
+    code:not(pre code) {
         @apply font-bold text-sm;
+        .light-3d & {
+            -webkit-text-stroke: 1px rgba(0,0,0,0.1);
+        }
         &::before {
             content: '`';
         }
@@ -131,6 +137,14 @@ dialog + .backdrop  // polyfill
 
 dialog {
     border: none !important;
+}
+
+.light-3d .light-3d-floating-glass {
+    @apply border-2 border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white backdrop-blur-sm [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.2)];
+}
+
+.light-3d .light-3d-floating-glass-sm {
+    @apply border border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white backdrop-blur-sm [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.1)];
 }
 
 pre code.hljs{display:block;overflow-x:auto;padding:1em}

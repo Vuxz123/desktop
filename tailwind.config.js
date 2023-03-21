@@ -1,4 +1,8 @@
-/** @type {import('tailwindcss').Config} */
+// @ts-check
+
+const plugin = require("tailwindcss/plugin");
+
+/** @type {import("tailwindcss").Config} */
 module.exports = {
   darkMode: "class",
   content: [
@@ -13,9 +17,12 @@ module.exports = {
       },
       screens: {
         "51rem": "51rem"
-      }
+      },
     },
   },
   plugins: [
+    plugin(({ addVariant }) => {
+      addVariant("light-3d", ".light-3d &");
+    })
   ],
 }
