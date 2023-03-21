@@ -550,13 +550,24 @@ export const extractFirstCodeBlock = (content: string) => /```[^\n]*\n*([\s\S]*?
 /** Generates an assistant's response and appends it to the thread. */
 const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ message: PartialMessage, path: MessageId[] }> => {
     const model = "gpt-3.5-turbo"
-    const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 }, model)
-    const id = path.at(-1)!
-    useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id], scrollIntoView: id }))
     let autoScroll = true
     const onScroll = () => { autoScroll = false }
     window.addEventListener("wheel", onScroll, { passive: true, once: true })
     window.addEventListener("keydown", onScroll, { passive: true, once: true })
+    const path = await appendMessage(messages, { role: "assistant", content: "", status: -1 }, model)
+    const id = path.at(-1)!
+    useStore.setState((s) => ({ waitingAssistantsResponse: [...s.waitingAssistantsResponse, id] }))
+    const scrollToBottom = () => {
+        setTimeout(() => {
+            if (!autoScroll) { return }
+            if (useConfigStore.getState().reversedView) {
+                document.querySelector("#mainScroller")!.scrollTo(0, 0)
+            } else {
+                document.querySelector("#mainScroller")!.scrollTo(0, document.querySelector("#mainScroller")!.scrollHeight)
+            }
+        }, 100) // TODO: wait the next rendering
+    }
+    scrollToBottom()
     try {
         const ttsId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
         const splitLines = new SplitLines((line) => {
@@ -571,7 +582,7 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
                 splitLines.add(delta)
                 await db.current.execute("UPDATE message SET content = ? WHERE id = ?", [content, id])
                 reload(path)
-                if (autoScroll) { useStore.setState({ scrollIntoView: id }) }
+                scrollToBottom()
             },
         )
         splitLines.end()
