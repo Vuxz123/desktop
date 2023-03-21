@@ -5,6 +5,8 @@
 @tailwind utilities;
 
 .markdown {
+    min-height: 2rem;
+
     h1 { @apply font-semibold text-4xl my-3; }
     h2 { @apply font-semibold text-3xl my-3; }
     h3 { @apply font-semibold text-2xl my-3; }
@@ -69,6 +71,12 @@
             // only when the content is rendered for the first time.
             @apply inline;
         }
+    }
+
+    &.waiting > *:last-child::after {
+        // cursor animation
+        content: "";
+        @apply border-l-8 border-l-zinc-600 dark:border-l-zinc-100 [animation:cursor_1s_infinite];
     }
 }
 

@@ -18,56 +18,62 @@ import * as icon from "@tabler/icons-react"
 import md5 from "md5"
 
 /** Renders markdown contents. */
-const Markdown = (props: { content: string }) => {
+const Markdown = (props: { content: string, waiting: boolean }) => {
     useLayoutEffect(() => {
         for (const element of document.querySelectorAll<HTMLElement>(".markdown pre code:not(.hljs)")) {
             hljs.highlightElement(element)
         }
     }, [props.content])
-    return useMemo(() => <ReactMarkdown
-        className="markdown select-text"
-        remarkPlugins={[remarkGfm]}
-        components={{
-            code({ node, inline, className, children, ...props }) {
-                if (inline) { return <code className={className} {...props as any}>{children}</code> }
-                const lang = /language-(\w+)/.exec(className || '')?.[1]
-                const content = String(children).replace(/\n$/, '')
-                // The README of react-markdown uses react-syntax-highlighter for syntax highlighting but it freezes the app for a whole second when loading
-                return <>
-                    <div class="bg-gray-700 text-zinc-100 pb-1 pt-2 rounded-t flex">
-                        <div class="flex-1 pl-4">{lang}</div>
-                        <CodeBlockCopyButton content={content} />
-                    </div>
-                    <code class={"rounded-b " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
-                </>
-            },
-            a(props) {
-                return <a
-                    href={props.href}
-                    onClick={(ev) => {
-                        ev.preventDefault()
-                        if (props.href) {
-                            open(props.href)
-                        }
-                    }}
-                    onContextMenu={(ev) => {
-                        ev.preventDefault()
-                        const dialog = document.querySelector<HTMLDialogElement>("#contextmenu")!
+    return useMemo(() => {
+        if (props.content === "") {
+            // Display the cursor animation in a <p></p>
+            return <div class={"markdown select-text" + (props.waiting ? " waiting" : "")}><p></p></div>
+        }
+        return <ReactMarkdown
+            className={"markdown select-text" + (props.waiting ? " waiting" : "")}
+            remarkPlugins={[remarkGfm]}
+            components={{
+                code({ node, inline, className, children, ...props }) {
+                    if (inline) { return <code className={className} {...props as any}>{children}</code> }
+                    const lang = /language-(\w+)/.exec(className || '')?.[1]
+                    const content = String(children).replace(/\n$/, '')
+                    // The README of react-markdown uses react-syntax-highlighter for syntax highlighting but it freezes the app for a whole second when loading
+                    return <>
+                        <div class="bg-gray-700 text-zinc-100 pb-1 pt-2 rounded-t flex">
+                            <div class="flex-1 pl-4">{lang}</div>
+                            <CodeBlockCopyButton content={content} />
+                        </div>
+                        <code class={"rounded-b " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
+                    </>
+                },
+                a(props) {
+                    return <a
+                        href={props.href}
+                        onClick={(ev) => {
+                            ev.preventDefault()
+                            if (props.href) {
+                                open(props.href)
+                            }
+                        }}
+                        onContextMenu={(ev) => {
+                            ev.preventDefault()
+                            const dialog = document.querySelector<HTMLDialogElement>("#contextmenu")!
 
-                        render(<>
-                            <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { clipboard.writeText(props.href ?? "") }}>Copy Link</button>
-                        </>, dialog)
+                            render(<>
+                                <button class="text-gray-800 dark:text-zinc-100 bg-transparent border-none m-0 py-[0.15rem] px-6 text-left text-sm hover:bg-zinc-200 dark:hover:bg-zinc-600 select-none rounded-lg disabled:text-gray-400 [&::backdrop]:bg-transparent focus-within:outline-none" onClick={() => { clipboard.writeText(props.href ?? "") }}>Copy Link</button>
+                            </>, dialog)
 
-                        dialog.style.left = ev.pageX + "px"
-                        dialog.style.top = ev.pageY + "px"
+                            dialog.style.left = ev.pageX + "px"
+                            dialog.style.top = ev.pageY + "px"
 
-                        dialog.showModal()
-                        const rect = dialog.getBoundingClientRect()
-                        dialog.style.left = Math.min(ev.pageX, window.innerWidth - rect.width) + "px"
-                        dialog.style.top = Math.min(ev.pageY, window.scrollY + window.innerHeight - rect.height - 5) + "px"
-                    }}>{props.children}</a>
-            },
-        }}>{props.content}</ReactMarkdown>, [props.content])
+                            dialog.showModal()
+                            const rect = dialog.getBoundingClientRect()
+                            dialog.style.left = Math.min(ev.pageX, window.innerWidth - rect.width) + "px"
+                            dialog.style.top = Math.min(ev.pageY, window.scrollY + window.innerHeight - rect.height - 5) + "px"
+                        }}>{props.children}</a>
+                },
+            }}>{props.content}</ReactMarkdown>
+    }, [props.content, props.waiting])
 }
 
 const CodeBlockCopyButton = (props: { content: string }) => {
@@ -203,11 +209,8 @@ const MessageRenderer = (props: { depth: number }) => {
                 </>}
 
                 {/* Response */}
-                {(isFolded || editing) ? "" : (role === "assistant" || role === "system") ? <Markdown content={processedContent ?? ""}></Markdown> : <div class="whitespace-pre-wrap break-words select-text">{content}</div>}
+                {(isFolded || editing) ? "" : (role === "assistant" || role === "system") ? <Markdown content={processedContent ?? ""} waiting={waiting}></Markdown> : <div class="whitespace-pre-wrap break-words select-text">{content}</div>}
                 {isFolded && <span class="cursor-pointer text-zinc-500 hover:text-zinc-600 decoration-dashed italic" onClick={() => { api["message.unfold"](useStore.getState().visibleMessages[props.depth]!.id) }}>folded</span>}
-
-                {/* Cursor animation */}
-                {waiting && <span class={"border-l-8 border-l-zinc-600 dark:border-l-zinc-100 h-5 [animation:cursor_1s_infinite] inline-block" + (showAvatar ? " mt-4" : " mt-1")}></span>}
             </div>
         </div >
     }
@@ -529,7 +532,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             </div>
             <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
                 {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
-                <div class="flex-1 overflow-y-auto">
+                <div id="mainScroller" class="flex-1 overflow-y-auto">
                     {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "bg-white dark:bg-zinc-800")}></div>}
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
                         <div class="mt-4 border-b pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
