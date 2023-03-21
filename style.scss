@@ -6,6 +6,7 @@
 
 .markdown {
     min-height: 2rem;
+    width: 100%;
 
     h1 { @apply font-semibold text-4xl my-3; }
     h2 { @apply font-semibold text-3xl my-3; }
@@ -77,6 +78,14 @@
         // cursor animation
         content: "";
         @apply border-l-8 border-l-zinc-600 dark:border-l-zinc-100 [animation:cursor_1s_infinite];
+    }
+
+    & > *:first-child {
+        margin-top: 0;
+    }
+
+    & > *:last-child {
+        margin-bottom: 0;
     }
 }
 
