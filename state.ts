@@ -336,10 +336,10 @@ const setTextareaValueAndAutoResize = (textarea: HTMLTextAreaElement, value: str
  */
 const reload = async (path: MessageId[]) => {
     const visibleMessages: (Message & { children: Message[] })[] = []
-    let node = path.length === 0 ? undefined : (await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId LEFT OUTER JOIN messageModel ON message.id = messageModel.messageId WHERE id = ?", [path[0]!]))[0]
+    let node = path.length === 0 ? undefined : (await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId LEFT OUTER JOIN messageModelV2 ON message.id = messageModelV2.messageId WHERE id = ?", [path[0]!]))[0]
     let depth = 1
     while (node) {
-        const children = await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId LEFT OUTER JOIN messageModel ON message.id = messageModel.messageId WHERE parent = ?", [node.id])
+        const children = await db.current.select<Message[]>("SELECT * FROM message LEFT OUTER JOIN bookmark ON message.id = bookmark.messageId LEFT OUTER JOIN messageModelV2 ON message.id = messageModelV2.messageId WHERE parent = ?", [node.id])
         visibleMessages.push({ ...node, children })
         node = children.find((v) => v.id === path[depth]) ?? children.at(-1)
         depth++
@@ -539,7 +539,7 @@ const appendMessage = async (parents: readonly number[], message: Readonly<Parti
         id = (await db.current.execute("INSERT INTO message (parent, role, status, content) VALUES (?, ?, ?, ?) RETURNING id", [parents.at(-1)!, message.role, message.status, message.content])).lastInsertId
     }
     if (model) {
-        await db.current.execute("INSERT INTO messageModel (messageId, model) VALUES (?, ?)", [id, model])
+        await db.current.execute("INSERT INTO messageModelV2 (messageId, model) VALUES (?, ?)", [id, model])
     }
     await reload([...parents, id])
     return [...parents, id]
