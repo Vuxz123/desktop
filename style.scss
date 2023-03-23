@@ -140,11 +140,13 @@ dialog {
 }
 
 .light-3d .light-3d-floating-glass {
-    @apply border-2 border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white backdrop-blur-sm [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.2)];
+    @apply border-2 border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.2)];
+    backdrop-filter: blur(2px);
 }
 
 .light-3d .light-3d-floating-glass-sm {
-    @apply border border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white backdrop-blur-sm [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.1)];
+    @apply border border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.1)];
+    backdrop-filter: blur(3px);
 }
 
 pre code.hljs{display:block;overflow-x:auto;padding:1em}

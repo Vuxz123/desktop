@@ -38,12 +38,12 @@ const Markdown = (props: { content: string, waiting: boolean }) => {
                     const lang = /language-(\w+)/.exec(className || '')?.[1]
                     const content = String(children).replace(/\n$/, '')
                     // The README of react-markdown uses react-syntax-highlighter for syntax highlighting but it freezes the app for a whole second when loading
-                    return <div class="light-3d:[box-shadow:0_0_1rem_rgb(0,0,0,0.5)] rounded">
-                        <div class="bg-gray-700 text-zinc-100 pb-1 pt-2 rounded-t flex">
+                    return <div class="light-3d:[box-shadow:0_0_1rem_rgb(0,0,0,0.5)] rounded light-3d:m-4">
+                        <div class="bg-gray-700 light-3d:bg-gradient-to-r light-3d:from-slate-700 light-3d:to-slate-900 light-3d:border-b light-3d:border-b-[rgb(255,255,255,0.1)] light-3d:bg-opacity-90 text-zinc-100 pb-1 pt-2 rounded-t light-3d:border-t light-3d:border-t-slate-300 light-3d:border-l light-3d:border-l-slate-400 light-3d:border-r-1 light-3d:border-r-slate-800 flex">
                             <div class="flex-1 pl-4">{lang}</div>
                             <CodeBlockCopyButton content={content} />
                         </div>
-                        <code class={"rounded-b " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
+                        <code class={"rounded-b light-3d:bg-gradient-to-r light-3d:from-slate-700 light-3d:to-slate-900 light-3d:bg-opacity-90 light-3d:border-r-1 light-3d:border-l light-3d:border-l-slate-400 light-3d:border-4-slate-800 light-3d:border-b-4 light-3d:border-b-slate-800 " + (lang ? `language-${lang}` : "")} {...props as any}>{content}</code>
                     </div>
                 },
                 a(props) {
@@ -302,7 +302,7 @@ const ThreadListItem = (props: { i: number }) => {
 /** Renders the search bar for threads. */
 const SearchBar = () => {
     const value = useStore((s) => s.search)
-    return <input class="w-full pl-8 py-2 bg-zinc-700 light-3d:bg-white light-3d:bg-opacity-10 light-3d:focus-within:outline-none light-3d:focus-within:bg-opacity-[0.15] light-3d:shadow-light transition-colors my-2"
+    return <input class="w-full pl-8 py-2 bg-zinc-700 light-3d:bg-white light-3d:bg-opacity-10 light-3d:focus-within:outline-none light-3d:focus-within:bg-opacity-[0.15] light-3d:shadow-light-subtle transition-colors my-2"
         value={value}
         onKeyDown={(ev) => { if (ev.code === "Enter") { useStore.setState({ search: ev.currentTarget.value }) } }}
         onBlur={(ev) => useStore.setState({ search: ev.currentTarget.value })}
@@ -475,7 +475,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
             <icon.IconMenu2 className="icon" size="1.875em" strokeWidth={1.25} />
         </div>}
         <div class="flex">
-            <div class={"text-sm overflow-x-hidden whitespace-nowrap bg-zinc-800 light-3d:bg-gradient-to-r light-3d:from-slate-900 light-3d:to-slate-700 dark:bg-zinc-900 h-[100vh] text-white flex flex-col relative" + (isSideBarOpen ? " w-80" : " w-0")}>
+            <div class={"text-sm overflow-x-hidden whitespace-nowrap bg-zinc-800 light-3d:[background-image:url('/textures/egg-shell.png'),linear-gradient(to_right,var(--tw-gradient-stops))] light-3d:from-slate-900 light-3d:to-slate-700 dark:bg-zinc-900 h-[100vh] text-white flex flex-col relative" + (isSideBarOpen ? " w-80" : " w-0")}>
                 {isSideBarOpen && <div title="Close side bar" class="absolute top-5 right-4 cursor-pointer z-40 hover:bg-zinc-700 select-none rounded-lg" onClick={(ev) => { ev.preventDefault(); api["sideBar.hide"]() }}>
                     <icon.IconChevronsLeft className="icon" size="1.875em" strokeWidth={1.25} />
                 </div>}
@@ -534,11 +534,14 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     About this app
                 </div>
             </div>
-            <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white light-3d:[box-shadow:2rem_0_100rem_0rem_rgb(51,65,85,0.5)_inset] dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
-                {isSideBarOpen && <div class="hidden light-3d:block absolute z-50 top-0 left-0 h-full pointer-events-none select-none w-[0.4rem] bg-gradient-to-r from-[rgb(0,0,0,0.4)] to-transparent"></div>}
+            <div class="flex h-[100vh] overflow-hidden flex-1 flex-col bg-white light-3d:[background-image:url('/textures/gradient-squares.png')] light-3d:[box-shadow:2rem_0_100rem_0rem_rgb(51,65,85,0.5)_inset] dark:bg-zinc-800 dark:text-zinc-100 relative" id="main">
+                {/* shadow */}
+                {isSideBarOpen && <div class="hidden light-3d:block absolute z-50 top-0 left-0 h-full pointer-events-none select-none w-[0.6rem] bg-gradient-to-r from-[rgb(0,0,0,0.4)] to-transparent"></div>}
+                {isSideBarOpen && <div class="hidden light-3d:block absolute z-50 top-0 left-0 h-full pointer-events-none select-none w-[0.2rem] [background:url('/textures/egg-shell.png'),#1e293b]"></div>}
+
                 {shouldDisplayAPIKeyInput && <APIKeyInputDialog isSideBarOpen={isSideBarOpen} />}
-                <div id="mainScroller" class="flex-1 overflow-y-auto">
-                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 dark:bg-zinc-700" : "")}></div>}
+                <div id="mainScroller" class="flex-1 overflow-y-auto" onScroll={() => { document.querySelector<HTMLElement>("#main")!.style.backgroundPositionY = `${-document.querySelector<HTMLElement>("#mainScroller")!.scrollTop * 0.05}px` }}>
+                    {reversed && <div class={"h-32 " + (lastMessageRole === "assistant" ? "bg-zinc-100 light-3d:bg-transparent dark:bg-zinc-700" : "")}></div>}
                     {!reversed && <div class={"text-center" + (isSideBarOpen ? "" : " px-16")}>
                         <div class="mt-4 border-b border-b-zinc-600 border-opacity-10 pb-1 dark:border-b-zinc-600 cursor-default" onMouseDown={(ev) => ev.preventDefault()}>{threadName}</div>
                     </div>}
@@ -562,11 +565,11 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                             </div>
                         </>}
                         {!isResponseInIntegratedTerminal && <>
-                            <div class={"shadow-light dark:shadow-dark rounded-lg bg-white light-3d:bg-opacity-70 light-3d:focus-within:bg-opacity-50 light-3d:transition-colors light-3d-floating-glass relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
+                            <div class={"shadow-light dark:shadow-dark rounded-lg bg-white light-3d:bg-opacity-20 light-3d:focus-within:bg-opacity-70 light-3d:transition-colors light-3d-floating-glass relative flex-1 " + (isSideBarOpen ? "" : "ml-16 51rem:ml-0 ") + (reversed ? "dark:bg-zinc-600" : "dark:bg-zinc-700")}>
                                 <textarea
                                     id="userPromptTextarea"
                                     ref={textareaRef}
-                                    class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 pl-4 pr-12 resize-none bg-transparent focus-within:outline-none"
+                                    class="dark:text-zinc-100 leading-6 w-[calc(100%-1.25rem)] py-2 pl-4 pr-12 resize-none bg-transparent focus-within:outline-none placeholder-gray-400 placeholder:italic"
                                     placeholder="Explain quantum computing in simple terms"
                                     rows={1}
                                     defaultValue={props.prompt}
@@ -1243,7 +1246,7 @@ const RegenerateResponse = () => {
         </div>
     }
     if (canRegenerateResponse) {
-        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white light-3d:bg-opacity-50 light-3d-floating-glass dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm whitespace-nowrap " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
+        return <div class={"border border-zinc-200 dark:border-zinc-600 bg-white light-3d:bg-opacity-25 light-3d-floating-glass dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 cursor-pointer w-fit px-3 py-2 rounded-lg absolute left-0 right-0 mx-auto text-center bottom-full text-sm whitespace-nowrap " + (reversed ? "top-full mt-2 h-fit" : "mb-2")} onClick={() => { api["assistant.regenerateResponse"]() }}>
             <icon.IconRefresh className="inline mr-2" size="1.125em" strokeWidth={1.25} />
             Regenerate response
         </div>

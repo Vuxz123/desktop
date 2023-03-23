@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "ChatGPT",
-    "version": "0.45.0"
+    "version": "0.46.0"
   },
   "tauri": {
     "allowlist": {
@@ -63,7 +63,9 @@
         "providerShortName": null,
         "signingIdentity": null
       },
-      "resources": [],
+      "resources": [
+        "../textures/*"
+      ],
       "shortDescription": "",
       "targets": "all",
       "windows": {
