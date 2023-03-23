@@ -1,7 +1,7 @@
 # ChatGPT Desktop
 The ChatGPT UI reimplemented as a desktop app, with some additional features.
 
-![Screenshot from 2023-03-07 21-43-47](https://user-images.githubusercontent.com/127208659/223425508-baaa9da1-c058-4352-9533-fb985248fc25.png)
+![Screenshot from 2023-03-23 20-43-48](https://user-images.githubusercontent.com/127208659/227193723-07f2dd92-ce20-4eb8-8c16-d6888c182033.png)
 
 # Download
 https://github.com/chatgptui/desktop/releases
