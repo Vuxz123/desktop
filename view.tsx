@@ -725,7 +725,7 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
                 </p>
             </>}
             {!!(openaiService !== "openai" || apiKey) && <p class="mt-8">
-                Model (gpt-3.5-turbo"gpt-3.5-turbo", gpt-4, or <a class="cursor-pointer text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/docs/models/gpt-4") }}>others</a>)<br />
+                Model (gpt-3.5-turbo, gpt-4, or <a class="cursor-pointer text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/docs/models/gpt-4") }}>others</a>)<br />
                 <input
                     autocomplete="off"
                     value={model}
