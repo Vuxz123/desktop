@@ -487,7 +487,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 </div>
                 <SearchBar />
                 <div class="flex-1 overflow-y-auto">
-                    {Array(numThreads).fill(0).map((_, i) => <ThreadListItem i={i} />)}
+                    {Array(numThreads).fill(0).map((_, i) => <ThreadListItem key={i} i={i} />)}
                     <SearchResult />
                 </div>
                 <hr class="border-t border-t-zinc-600"></hr>
@@ -624,6 +624,7 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
     const hasMessage = useStore((s) => s.visibleMessages.length > 0)
     const openaiProxyAPIKey = useConfigStore((s) => s.openaiProxyAPIKey)
     const openaiProxyUrl = useConfigStore((s) => s.openaiProxyUrl)
+    const model = useConfigStore((s) => s.model)
 
     return <div class={"absolute rounded-lg top-32 left-0 right-0 z-50 text-center w-fit max-w-full m-auto overflow-auto" + (hasMessage ? " bg-white dark:bg-black bg-opacity-40 dark:bg-opacity-25 backdrop-blur shadow-light dark:shadow-dark" : "") + (isSideBarOpen ? "" : " px-16")}>
         <div class="p-8">
@@ -723,6 +724,16 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
                     </p>
                 </p>
             </>}
+            {!!(openaiService !== "openai" || apiKey) && <p class="mt-8">
+                Model (gpt-3.5-turbo"gpt-3.5-turbo", gpt-4, or <a class="cursor-pointer text-blue-700 dark:text-blue-300 border-b border-b-blue-700 dark:border-b-blue-300 whitespace-nowrap" onClick={(ev) => { ev.preventDefault(); open("https://platform.openai.com/docs/models/gpt-4") }}>others</a>)<br />
+                <input
+                    autocomplete="off"
+                    value={model}
+                    onChange={(ev) => { useConfigStore.setState({ model: ev.currentTarget.value }) }}
+                    class="mb-2 w-80 shadow-light dark:shadow-dark rounded-lg font-mono px-4 dark:bg-zinc-700 dark:text-zinc-100"
+                    placeholder="gpt-3.5-turbo"></input>
+                {model !== "gpt-3.5-turbo" && <p class="opacity-50 hover:opacity-70 cursor-pointer" onClick={() => { api["dialog.budget"]() }}>Adjust budget</p>}
+            </p>}
         </div>
     </div>
 }
@@ -1155,6 +1166,8 @@ const BudgetDialog = () => {
     const budget = useConfigStore((s) => s.budget)
     const maxCostPerMessage = useConfigStore((s) => s.maxCostPerMessage)
     const [month, setMonth] = useState("")
+    const maxTokens = useConfigStore((s) => Math.floor(maxCostPerMessage / (getPricePerToken(s.model)?.prompt ?? 0)))
+    const model = useConfigStore((s) => s.model)
 
     useEffect(() => {
         useStore.setState({
@@ -1197,7 +1210,7 @@ WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.s
                             if (!Number.isFinite(+ev.currentTarget.value!)) { return }
                             useConfigStore.setState({ maxCostPerMessage: +ev.currentTarget.value })
                         }}></input> =
-                        {Math.floor(maxCostPerMessage / getPricePerToken("gpt-3.5-turbo")!.prompt)} gpt-3.5-turbo tokens
+                        {maxTokens} {model} tokens
                     </td></tr>
             </table>
             <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">ChatGPT Usage ({month})</h2>

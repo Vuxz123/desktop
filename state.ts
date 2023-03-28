@@ -239,6 +239,7 @@ const defaultConfigValues = {
     zoomLevel: 0,
     gravatarEmail: "",
     showAvatar: 1,
+    model: "gpt-3.5-turbo",
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -549,7 +550,7 @@ export const extractFirstCodeBlock = (content: string) => /```[^\n]*\n*([\s\S]*?
 
 /** Generates an assistant's response and appends it to the thread. */
 const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ message: PartialMessage, path: MessageId[] }> => {
-    const model = "gpt-3.5-turbo"
+    const model = useConfigStore.getState().model
     let autoScroll = true
     const onScroll = () => { autoScroll = false }
     window.addEventListener("wheel", onScroll, { passive: true, once: true })
