@@ -508,7 +508,7 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                         useStore.setState((s) => ({ shouldDisplayAPIKeyInputOverride: !s.shouldDisplayAPIKeyInputOverride }))
                     }}>
                     <icon.IconKey className="inline mr-2" size="1.25em" strokeWidth={1.25} />
-                    OpenAI API key
+                    OpenAI API key / Language model
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => { ev.preventDefault(); api["dialog.speaker"]() }}>
