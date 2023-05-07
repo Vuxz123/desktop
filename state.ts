@@ -29,7 +29,7 @@ export const invoke = _invoke as any as {
     (cmd: "stop_all_chat_completions"): Promise<void>
     (cmd: "get_chat_completion", args: { requestId: number }): Promise<string[]>
     (cmd: "stop_audio"): Promise<void>
-    (cmd: "count_tokens_gpt3_5_turbo_0301", args: { messages: ChatMLMessage[] }): Promise<number>
+    (cmd: "count_tokens", args: { model: string, messages: ChatMLMessage[] }): Promise<number>
 }
 
 class Canceled extends Error { }
@@ -398,7 +398,7 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         if (price) {
             while (true) {
                 // TODO: performance optimization
-                const tokens = await invoke("count_tokens_gpt3_5_turbo_0301", { messages: messagesFed }) + expectedGeneratedTokenCount * (price.generated / price.prompt)
+                const tokens = await invoke("count_tokens", { model, messages: messagesFed }) + expectedGeneratedTokenCount * (price.generated / price.prompt)
                 const maxTokens = maxCostPerMessage / price.prompt
                 if (tokens < maxTokens) {
                     break
@@ -516,8 +516,8 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
         } else {
             const result = await dataFetchPromise
             Promise.all([
-                invoke("count_tokens_gpt3_5_turbo_0301", { messages: messagesFed }),
-                invoke("count_tokens_gpt3_5_turbo_0301", { messages: [result] })
+                invoke("count_tokens", { model, messages: messagesFed }),
+                invoke("count_tokens", { model, messages: [result] })
             ]).then(([promptTokens, completionTokens]) => {
                 completionTokens -= 4 // "<im_start>" "assistant" "<im_start>" "assistant"
                 db.current.execute("INSERT INTO textCompletionUsage (model, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?)", [model, promptTokens, completionTokens, promptTokens + completionTokens])

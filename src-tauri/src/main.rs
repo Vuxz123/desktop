@@ -3,11 +3,10 @@
     windows_subsystem = "windows"
 )]
 
-use rust_tokenizers::tokenizer::{Gpt2Tokenizer, Tokenizer, TruncationStrategy};
 use serde_json::Value;
 use sqlx::{Connection, Row};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::io::{Read, Write};
+use std::collections::{HashMap, HashSet};
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
@@ -17,6 +16,7 @@ use std::time::Duration;
 use tauri::api::cli::ArgData;
 use tauri::api::http::{Body, ClientBuilder, FormBody, FormPart, HttpRequestBuilder, ResponseType};
 use tempfile::NamedTempFile;
+use tiktoken_rs::ChatCompletionRequestMessage;
 
 static mut DB_PATH: Option<PathBuf> = None;
 static AUDIO_PLAYBACK_COUNTER: AtomicI64 = AtomicI64::new(0);
@@ -43,8 +43,6 @@ enum Error {
     RodioPlayError(#[from] rodio::PlayError),
     #[error(transparent)]
     RodioDecoderError(#[from] rodio::decoder::DecoderError),
-    #[error(transparent)]
-    TokenizerError(#[from] rust_tokenizers::error::TokenizerError),
     #[error(transparent)]
     CpalDefaultStreamConfigError(#[from] cpal::DefaultStreamConfigError),
     #[error(transparent)]
@@ -139,7 +137,6 @@ fn main() {
             stop_all_chat_completions,
             get_chat_completion,
             stop_audio,
-            count_tokens_gpt3_5_turbo_0301,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -357,60 +354,12 @@ impl AtomicF32 {
 }
 
 lazy_static::lazy_static! {
-    static ref TOKEN_COUNT_CACHE: Mutex<VecDeque<(String, usize)>> = Mutex::new(VecDeque::new());
-    static ref VOCAB_FILE: NamedTempFile = {
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(include_bytes!("vocab.json")).unwrap();
-        f
-    };
-    static ref MERGES_FILE: NamedTempFile = {
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(include_bytes!("merges.txt")).unwrap();
-        f
-    };
-
     /// [0, infty] -> volume
     /// -1 -> transcribing
     static ref INPUT_LOUDNESS: AtomicF32 = AtomicF32::new(0.0);
 
     static ref CHAT_COMPLETION_RESPONSE: Arc<Mutex<HashMap<u64, Vec<String>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref CHAT_COMPLETION_CANCELED: Arc<Mutex<HashSet<u64>>> = Arc::new(Mutex::new(HashSet::new()));
-}
-
-#[tauri::command]
-async fn count_tokens(content: String) -> Result<usize, Error> {
-    if let Some(&(_, count)) = TOKEN_COUNT_CACHE.lock()?.iter().find(|v| v.0 == content) {
-        return Ok(count);
-    }
-
-    let count = {
-        let content = content.clone();
-        tokio::task::spawn_blocking(move || -> Result<usize, Error> {
-            Ok(
-                Gpt2Tokenizer::from_file(VOCAB_FILE.path(), MERGES_FILE.path(), false)?
-                    .encode(
-                        &content,
-                        None,
-                        usize::MAX,
-                        &TruncationStrategy::DoNotTruncate,
-                        0,
-                    )
-                    .token_ids
-                    .len(),
-            )
-        })
-        .await??
-    };
-
-    {
-        let mut cache = TOKEN_COUNT_CACHE.lock()?;
-        cache.push_back((content, count));
-        if cache.len() > 100 {
-            cache.pop_front();
-        }
-    }
-
-    Ok(count)
 }
 
 /// lang: en-US, en-GB, de-DE, es-ES, fr-FR, or it-IT
@@ -679,20 +628,14 @@ struct Message {
 
 /// https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
 #[tauri::command]
-async fn count_tokens_gpt3_5_turbo_0301(messages: Vec<Message>) -> Result<usize, Error> {
-    let mut num_tokens: usize = 0;
-
-    for message in messages {
-        num_tokens += 4; // "<im_start>" "\n" "<im_end>" "\n"
-        if let Some(name) = message.name {
-            num_tokens += count_tokens(name).await?;
-        } else {
-            num_tokens += count_tokens(message.role).await?
-        }
-        num_tokens += count_tokens(message.content).await?;
+async fn count_tokens(model: String, messages: Vec<Message>) -> Result<usize, Error> {
+    let mut request_messages = vec![];
+    for m in messages {
+        request_messages.push(ChatCompletionRequestMessage {
+            content: m.content,
+            role: m.role,
+            name: m.name,
+        });
     }
-
-    num_tokens += 2; // "<im_start>" "assistant"
-
-    Ok(num_tokens)
+    Ok(tiktoken_rs::num_tokens_from_messages(&model, &request_messages).unwrap_or(0))
 }

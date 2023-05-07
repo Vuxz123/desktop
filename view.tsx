@@ -926,11 +926,13 @@ const SearchResult = () => {
 
 const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
     const [count, setCount] = useState(0)
+    const model = useConfigStore((s) => s.model)
     useEffect(() => {
         let stop = false
         const loop = async () => {
             if (stop) { return }
-            setCount(await invoke("count_tokens_gpt3_5_turbo_0301", {
+            setCount(await invoke("count_tokens", {
+                model,
                 messages: [
                     ...useStore.getState().visibleMessages.flatMap((v) => v.role === "root" ? [] : [{ content: v.content, role: v.role }]),
                     { content: props.textareaRef.current?.value ?? "", role: "user" },
@@ -940,8 +942,8 @@ const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
         }
         loop()
         return () => { stop = true }
-    }, [props.textareaRef])
-    return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mb-2 text-zinc-600 rounded cursor-pointer" onClick={() => { open("https://platform.openai.com/tokenizer") }}>{count}</span>
+    }, [props.textareaRef, model])
+    return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mb-2 text-zinc-600 rounded cursor-pointer" onClick={() => { open("https://tiktokenizer.vercel.app") }}>{count}</span>
 }
 
 type AzureVoiceInfo = {
