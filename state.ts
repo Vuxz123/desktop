@@ -1,7 +1,10 @@
 import { clipboard, invoke as _invoke } from "@tauri-apps/api"
 import { open, Command } from '@tauri-apps/api/shell'
 import { create } from "zustand"
-import Database from "tauri-plugin-sql-api"
+// @ts-ignore
+import _Database from "tauri-plugin-sql-api"
+import type DatabaseType from "tauri-plugin-sql-api/dist-js"
+const Database = _Database as typeof DatabaseType
 import PQueue from "p-queue"
 // @ts-ignore
 import getTokenUsageSQL from "./get_token_usage.sql?raw"
@@ -53,7 +56,7 @@ window.addEventListener("unhandledrejection", (err) => {
 })
 
 /** Database connection. */
-export let db: { current: Database } = {} as any
+export let db: { current: DatabaseType } = {} as any
 
 type PartialMessage = {
     content: string
@@ -240,6 +243,7 @@ const defaultConfigValues = {
     gravatarEmail: "",
     showAvatar: 1,
     model: "gpt-3.5-turbo",
+    customInstructions: "",
 } satisfies Record<string, string | number>
 
 const _useConfigStore = create<typeof defaultConfigValues>()(() => defaultConfigValues)
@@ -298,8 +302,7 @@ export type State = {
     editing: Set<MessageId>
     renamingThread: MessageId | null
     shouldDisplayAPIKeyInputOverride: boolean
-    openUsageDialog: () => void
-    openBookmarkDialog: () => void
+    settingsTab: "general" | "budget" | "bookmark" | "speaker" | "microphone" | "customInstructions",
 }
 
 let _useStore = create<State>()(() => ({
@@ -316,8 +319,7 @@ let _useStore = create<State>()(() => ({
     editing: new Set(),
     renamingThread: null,
     shouldDisplayAPIKeyInputOverride: false,
-    openUsageDialog: () => { },
-    openBookmarkDialog: () => { }
+    settingsTab: "general",
 }))
 
 // @ts-ignore
@@ -404,10 +406,14 @@ const complete = async (messages: readonly Pick<PartialMessage, "role" | "conten
                     break
                 }
                 if (messagesFed.length > 1) {
-                    messagesFed.splice(0, 1)  // drop the oldest message
+                    messagesFed.shift()
                     numParentsFed = messagesFed.length
                 } else {
                     const content = messagesFed[0]!.content
+                    if (content === "") {
+                        alert("The current budget per a message is too small.")
+                        throw new Error()
+                    }
                     messagesFed[0]!.content = content.slice(0, Math.floor(content.length * maxTokens / tokens * 0.9))  // cut tail
                     omitted = true
                 }
@@ -609,33 +615,36 @@ const completeAndAppend = async (messages: readonly MessageId[]): Promise<{ mess
     }
 }
 
-const defaultPrompt = `\
-Assistant is a large language model trained by OpenAI.
-knowledge cutoff: 2021-09
-Current date: ${Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date())}
-Browsing: disabled`
-
-export const isDefaultPrompt = (prompt: string) =>
-    new RegExp(String.raw`^Assistant is a large language model trained by OpenAI\.
-knowledge cutoff: 2021-09
-Current date: \w+ \d+, \d+
-Browsing: disabled$`).test(prompt)
-
-if (!isDefaultPrompt(defaultPrompt)) {
-    console.error(`!isDefaultPrompt(defaultPrompt)`)
-}
-
 const findParents = async (id: MessageId) => {
     return (await db.current.select<{ id: number }[]>(findParentsSQL, [id])).reverse().map((v) => v.id)
 }
 
 export const api = {
     // "object.action"
-    "dialog.bookmark": () => { useStore.getState().openBookmarkDialog() },
-    "dialog.preferences": () => { document.querySelector<HTMLDialogElement>("#preferences")?.showModal() },
-    "dialog.budget": () => { useStore.getState().openUsageDialog() },
-    "dialog.speaker": () => { document.querySelector<HTMLDialogElement>("#text-to-speech")?.showModal() },
-    "dialog.microphone": () => { document.querySelector<HTMLDialogElement>("#speech-to-text")!.showModal() },
+    "dialog.preferences": () => {
+        document.querySelector<HTMLDialogElement>("#settings")?.showModal()
+        useStore.setState({ settingsTab: "general" })
+    },
+    "dialog.bookmark": () => {
+        document.querySelector<HTMLDialogElement>("#settings")?.showModal()
+        useStore.setState({ settingsTab: "bookmark" })
+    },
+    "dialog.budget": () => {
+        document.querySelector<HTMLDialogElement>("#settings")?.showModal()
+        useStore.setState({ settingsTab: "budget" })
+    },
+    "dialog.speaker": () => {
+        document.querySelector<HTMLDialogElement>("#settings")?.showModal()
+        useStore.setState({ settingsTab: "speaker" })
+    },
+    "dialog.microphone": () => {
+        document.querySelector<HTMLDialogElement>("#settings")?.showModal()
+        useStore.setState({ settingsTab: "microphone" })
+    },
+    "dialog.customInstructions": () => {
+        document.querySelector<HTMLDialogElement>("#settings")?.showModal()
+        useStore.setState({ settingsTab: "customInstructions" })
+    },
     "messageInput.focus": async (audioFeedback = true) => {
         const textarea = getChatInput()
         if (!textarea) { return } // TODO:
@@ -694,7 +703,7 @@ export const api = {
             // Append the system message if this is the first message in the thread
             path = await appendMessage([], { role: "root", content: "", status: 0 })
             path = await appendMessage(path, {
-                role: "system", content: defaultPrompt, status: 0
+                role: "system", content: useConfigStore.getState().customInstructions, status: 0
             })
             path = await appendMessage(path, { role: "user", content: textarea.value, status: 0 })
             await run(true)

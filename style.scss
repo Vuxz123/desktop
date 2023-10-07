@@ -139,6 +139,10 @@ dialog {
     border: none !important;
 }
 
+dialog:focus-within {
+    outline: none;
+}
+
 .light-3d .light-3d-floating-glass {
     @apply border-2 border-opacity-50 border-b-zinc-500 border-r-zinc-500 border-t-white border-l-white [box-shadow:0_0.1rem_0.5rem_rgb(0,0,0,0.2)];
     backdrop-filter: blur(2px);
@@ -163,3 +167,22 @@ code.hljs{padding:3px 5px}
 .hljs-emphasis{font-style:italic}
 .hljs-strong{font-weight:700}
 .hljs-link{text-decoration:underline}
+
+.settings {
+    @apply text-black;
+    select {
+        @apply px-2 border border-solid border-neutral-400 rounded;
+    }
+    input[type='text'] {
+        @apply px-2 border border-solid border-neutral-400 rounded;
+    }
+    textarea {
+        @apply px-2 py-1 w-full h-40 border border-solid border-neutral-400 rounded;
+    }
+    h2 {
+        @apply border-b mb-4;
+        &:not(:first-child) {
+            @apply mt-4;
+        }
+    }
+}

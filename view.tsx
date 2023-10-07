@@ -12,7 +12,7 @@ import { appWindow } from "@tauri-apps/api/window"
 import { useEventListener } from "usehooks-ts"
 import remarkGfm from "remark-gfm"
 import { getMatches } from '@tauri-apps/api/cli'
-import { MessageId, State, api, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isDefaultPrompt, isMac, isWindows, useConfigStore, useStore, invoke, getPricePerToken } from "./state"
+import { MessageId, State, api, ctrlOrCmd, db, extractFirstCodeBlock, getTokenUsage, init, isMac, isWindows, useConfigStore, useStore, invoke, getPricePerToken } from "./state"
 import { JSXInternal } from "preact/src/jsx"
 import * as icon from "@tabler/icons-react"
 import md5 from "md5"
@@ -143,7 +143,7 @@ const MessageRenderer = (props: { depth: number }) => {
     }, [ref, scrollIntoView])
 
     const isRoleNameDisplayed = !showAvatar || role === "system"
-    if (role === "root" || (role === "system" && isDefaultPrompt(content ?? ""))) {
+    if (role === "root" || (role === "system" && useConfigStore.getState().customInstructions === (content ?? ""))) {
         return <></>
     } else {
         return <div ref={ref} class={"border-b border-b-zinc-200 dark:border-b-0 bg" + (status === 1 ? " bg-red-100 dark:bg-red-900" : role === "assistant" ? " bg-zinc-100 light-3d:bg-zinc-200 light-3d:bg-opacity-25 light-3d-floating-glass-sm dark:bg-zinc-700" : "")}>
@@ -493,16 +493,6 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 <hr class="border-t border-t-zinc-600"></hr>
 
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={async (ev) => { ev.preventDefault(); api["dialog.bookmark"]() }}>
-                    <icon.IconBookmark className="inline mr-2 [transform:translateY(-1px)]" size="1.25em" strokeWidth={1.25} />
-                    Bookmarks
-                </div>
-                <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={async (ev) => { ev.preventDefault(); api["dialog.budget"]() }}>
-                    <icon.IconCoins className="inline mr-2" size="1.25em" strokeWidth={1.25} />
-                    Budget
-                </div>
-                <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
                         ev.preventDefault()
                         useStore.setState((s) => ({ shouldDisplayAPIKeyInputOverride: !s.shouldDisplayAPIKeyInputOverride }))
@@ -511,19 +501,9 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                     OpenAI API key / Language model
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => { ev.preventDefault(); api["dialog.speaker"]() }}>
-                    <icon.IconVolume className="inline mr-2" size="1.25em" strokeWidth={1.25} />
-                    Text-to-speech / Audio feedback
-                </div>
-                <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
-                    onClick={(ev) => { ev.preventDefault(); api["dialog.microphone"]() }}>
-                    <icon.IconMicrophone className="inline mr-2" size="1.25em" strokeWidth={1.25} />
-                    Speech-to-text
-                </div>
-                <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => { ev.preventDefault(); api["dialog.preferences"]() }}>
                     <icon.IconSettings className="inline mr-2" size="1.25em" strokeWidth={1.25} />
-                    Preferences
+                    Settings
                 </div>
                 <div class="pl-8 py-2 cursor-pointer hover:bg-zinc-600 rounded-lg"
                     onClick={(ev) => {
@@ -602,12 +582,8 @@ const App = (props: { send?: boolean, prompt?: string, voiceInput?: boolean }) =
                 </div>
             </div>
         </div>
-        <SpeechToTextDialog />
-        <TextToSpeechDialog />
-        <BudgetDialog />
         <InputVolumeIndicator />
-        <BookmarkDialog />
-        <PreferencesDialog />
+        <SettingsDialog />
         <Dialog
             id="contextmenu"
             class="m-0 px-0 py-[0.15rem] absolute left-0 top-0 z-30 flex flex-col bg-zinc-100 dark:bg-zinc-800 outline-gray-200 dark:outline-zinc-600 shadow-lg whitespace-pre rounded-lg [&:not([open])]:hidden [&::backdrop]:bg-transparent"
@@ -738,7 +714,35 @@ const APIKeyInputDialog = ({ isSideBarOpen }: { isSideBarOpen: boolean }) => {
     </div>
 }
 
-const PreferencesDialog = () => {
+const SettingsDialog = () => {
+    const tab = useStore((s) => s.settingsTab)
+
+    return <Dialog id="settings" class="p-0 bg-white text-black shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
+        <div class="px-4 py-4 w-fit">
+            <h2 class="border-b pb-3 mb-4 text-neutral-800 font-bold border-b-neutral-200">Settings</h2>
+            <div class="flex gap-4">
+                <div>
+                    <div onClick={() => { useStore.setState({ settingsTab: "general" }) }} class={"px-4 rounded cursor-pointer" + (tab === "general" ? " bg-black text-white" : "")}><icon.IconSettings className="inline-block mr-1" size="1.1em" />General</div>
+                    <div onClick={() => { useStore.setState({ settingsTab: "budget" }) }} class={"px-4 rounded cursor-pointer" + (tab === "budget" ? " bg-black text-white" : "")}><icon.IconCoins className="inline-block mr-1" size="1.1em" />Budget</div>
+                    <div onClick={() => { useStore.setState({ settingsTab: "bookmark" }) }} class={"px-4 rounded cursor-pointer" + (tab === "bookmark" ? " bg-black text-white" : "")}><icon.IconBookmark className="inline-block mr-1" size="1.1em" />Bookmark</div>
+                    <div onClick={() => { useStore.setState({ settingsTab: "speaker" }) }} class={"px-4 rounded cursor-pointer" + (tab === "speaker" ? " bg-black text-white" : "")}><icon.IconVolume className="inline-block mr-1" size="1.1em" />Speaker</div>
+                    <div onClick={() => { useStore.setState({ settingsTab: "microphone" }) }} class={"px-4 rounded cursor-pointer" + (tab === "microphone" ? " bg-black text-white" : "")}><icon.IconMicrophone className="inline-block mr-1" size="1.1em" />Microphone</div>
+                    <div onClick={() => { useStore.setState({ settingsTab: "customInstructions" }) }} class={"px-4 rounded cursor-pointer" + (tab === "customInstructions" ? " bg-black text-white" : "")}><icon.IconFileText className="inline-block mr-1" size="1.1em" />Custom Instructions</div>
+                </div>
+                <div class="settings w-[30rem] h-[20rem] overflow-auto">
+                    {tab === "general" && <SettingsGeneral />}
+                    {tab === "budget" && <SettingsBudget />}
+                    {tab === "bookmark" && <SettingsBookmark />}
+                    {tab === "speaker" && <TextToSpeechDialog />}
+                    {tab === "microphone" && <SettingsSpeechToText />}
+                    {tab === "customInstructions" && <SettingsCustomInstructions />}
+                </div>
+            </div>
+        </div>
+    </Dialog>
+}
+
+const SettingsGeneral = () => {
     const reversed = useConfigStore((s) => s.reversedView)
     const theme = useConfigStore((s) => s.theme)
     const sidebar = useConfigStore((s) => s.sidebar)
@@ -746,108 +750,100 @@ const PreferencesDialog = () => {
     const showAvatar = useConfigStore((s) => !!s.showAvatar)
     const gravatarEmail = useConfigStore((s) => s.gravatarEmail)
 
-    return <Dialog id="preferences" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
-        <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Preferences</h2>
-            <table>
-                <tbody>
-                    <tr>
-                        <td>Theme</td>
-                        <td><select class="ml-2 px-2 text-zinc-600" value={theme} onChange={(ev) => {
-                            useConfigStore.setState({ theme: ev.currentTarget.value as any })
-                        }}>
-                            <option value="automatic">automatic</option>
-                            <option value="light">light</option>
-                            <option value="light-3d">light 3D</option>
-                            <option value="dark">dark</option>
-                        </select></td>
-                    </tr>
-                    <tr>
-                        <td>Direction</td>
-                        <td><select class="ml-2 px-2 text-zinc-600" value={reversed ? "reversed" : "normal"} onChange={(ev) => {
-                            useConfigStore.setState({ reversedView: ev.currentTarget.value === "reversed" ? 1 : 0 })
-                        }}>
-                            <option value="normal">normal</option>
-                            <option value="reversed">reversed</option>
-                        </select></td>
-                    </tr>
-                    <tr>
-                        <td>Sidebar</td>
-                        <td><select class="ml-2 px-2 text-zinc-600" value={sidebar} onChange={(ev) => {
-                            useConfigStore.setState({ sidebar: ev.currentTarget.value as any })
-                        }}>
-                            <option value="automatic">automatic</option>
-                            <option value="show">open by default</option>
-                            <option value="hide">hide by default</option>
-                        </select></td>
-                    </tr>
-                    <tr>
-                        <td>Avatar</td>
-                        <td><select class="ml-2 px-2 text-zinc-600" value={showAvatar ? "1" : "0"} onChange={(ev) => {
-                            useConfigStore.setState({ showAvatar: ev.currentTarget.value === "1" ? 1 : 0 })
-                        }}>
-                            <option value="1">visible</option>
-                            <option value="0">hide</option>
-                        </select></td>
-                    </tr>
-                    {showAvatar && <tr>
-                        <td>Avatar email</td>
-                        <td><input
-                            class="ml-2 bg-zinc-600 pl-2 rounded w-80 text-xs py-1"
-                            value={gravatarEmail}
-                            onChange={(ev) => {
-                                useConfigStore.setState({ gravatarEmail: ev.currentTarget.value as any })
-                            }}
-                            placeholder="name@example.com"></input></td>
-                    </tr>}
-                    <tr>
-                        <td>Search engine</td>
-                        <td>
-                            <input
-                                class="ml-2 bg-zinc-600 pl-2 rounded w-80 text-xs py-1"
-                                value={searchEngine}
-                                onChange={(ev) => {
-                                    useConfigStore.setState({ searchEngine: ev.currentTarget.value as any })
-                                }}
-                                placeholder={`https://www.google.com/search?q={searchTerms}`}></input>
-                            <button class="ml-1 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={async () => {
-                                await api["thread.new"]()
-                                await api["messageInput.set"](`\
+    return <table>
+        <tbody>
+            <tr>
+                <td>Theme</td>
+                <td><select class="ml-2" value={theme} onChange={(ev) => {
+                    useConfigStore.setState({ theme: ev.currentTarget.value as any })
+                }}>
+                    <option value="automatic">automatic</option>
+                    <option value="light">light</option>
+                    <option value="light-3d">light 3D</option>
+                    <option value="dark">dark</option>
+                </select></td>
+            </tr>
+            <tr>
+                <td>Direction</td>
+                <td><select class="ml-2" value={reversed ? "reversed" : "normal"} onChange={(ev) => {
+                    useConfigStore.setState({ reversedView: ev.currentTarget.value === "reversed" ? 1 : 0 })
+                }}>
+                    <option value="normal">normal</option>
+                    <option value="reversed">reversed</option>
+                </select></td>
+            </tr>
+            <tr>
+                <td>Sidebar</td>
+                <td><select class="ml-2" value={sidebar} onChange={(ev) => {
+                    useConfigStore.setState({ sidebar: ev.currentTarget.value as any })
+                }}>
+                    <option value="automatic">automatic</option>
+                    <option value="show">open by default</option>
+                    <option value="hide">hide by default</option>
+                </select></td>
+            </tr>
+            <tr>
+                <td>Avatar</td>
+                <td><select class="ml-2" value={showAvatar ? "1" : "0"} onChange={(ev) => {
+                    useConfigStore.setState({ showAvatar: ev.currentTarget.value === "1" ? 1 : 0 })
+                }}>
+                    <option value="1">visible</option>
+                    <option value="0">hide</option>
+                </select></td>
+            </tr>
+            {showAvatar && <tr>
+                <td>Avatar email</td>
+                <td><input
+                    type="text"
+                    class="ml-2"
+                    value={gravatarEmail}
+                    onChange={(ev) => {
+                        useConfigStore.setState({ gravatarEmail: ev.currentTarget.value as any })
+                    }}
+                    placeholder="name@example.com"></input></td>
+            </tr>}
+            <tr>
+                <td>Search engine</td>
+                <td>
+                    <input
+                        type="text"
+                        class="ml-2 w-80"
+                        value={searchEngine}
+                        onChange={(ev) => {
+                            useConfigStore.setState({ searchEngine: ev.currentTarget.value as any })
+                        }}
+                        placeholder={`https://www.google.com/search?q={searchTerms}`}></input>
+                    <button class="ml-1 inline rounded border border-neutral-400 text-sm px-3 disabled:bg-zinc-400" onClick={async () => {
+                        await api["thread.new"]()
+                        await api["messageInput.set"](`\
 Google: https://www.google.com/search?q={searchTerms}
 StackOverflow: https://stackoverflow.com/search?q={searchTerms}
 MDN: https://developer.mozilla.org/en-US/search?q={searchTerms}
 What's the template URL for Bing?`)
-                                document.querySelector<HTMLDialogElement>("dialog[open]")?.close()
-                            }}>help</button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </Dialog>
+                        document.querySelector<HTMLDialogElement>("dialog[open]")?.close()
+                    }}>help</button>
+                </td>
+            </tr>
+        </tbody>
+    </table>
 }
 
-const BookmarkDialog = () => {
+const SettingsBookmark = () => {
     type Bookmark = { id: MessageId, content: String, note: String, createdAt: string, modifiedAt: string }
     const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
+    const visible = useStore((s) => s.settingsTab === "budget")
     useEffect(() => {
-        useStore.setState({
-            openBookmarkDialog: () => {
-                db.current.select<Bookmark[]>("SELECT id, content, note, createdAt, modifiedAt FROM bookmark JOIN message ON message.id = bookmark.messageId ORDER BY createdAt DESC")
-                    .then((res) => { setBookmarks(res) })
-                document.querySelector<HTMLDialogElement>("#bookmark")!.showModal()
-            }
-        })
-    }, [])
-    return <Dialog id="bookmark" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
-        <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Bookmarks</h2>
-            {bookmarks.map((b) => <div class="cursor-pointer hover:bg-zinc-600 leading-1"
-                onClick={() => { api["message.show"](b.id) }}>
-                <span class="inline-block w-[80vw] px-2 whitespace-nowrap overflow-x-hidden overflow-ellipsis">{b.content}</span>
-            </div>)}
-        </div>
-    </Dialog>
+        (async () => {
+            db.current.select<Bookmark[]>("SELECT id, content, note, createdAt, modifiedAt FROM bookmark JOIN message ON message.id = bookmark.messageId ORDER BY createdAt DESC")
+                .then((res) => { setBookmarks(res) })
+        })()
+    }, [visible])
+    return <>
+        {bookmarks.map((b) => <div class="cursor-pointer hover:bg-zinc-600 leading-1"
+            onClick={() => { api["message.show"](b.id) }}>
+            <span class="inline-block px-2 whitespace-nowrap overflow-x-hidden overflow-ellipsis">{b.content}</span>
+        </div>)}
+    </>
 }
 
 const InputVolumeIndicator = () => {
@@ -927,6 +923,7 @@ const SearchResult = () => {
 const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
     const [count, setCount] = useState(0)
     const model = useConfigStore((s) => s.model)
+    const customInstructions = useConfigStore((s) => s.customInstructions)
     useEffect(() => {
         let stop = false
         const loop = async () => {
@@ -934,6 +931,7 @@ const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
             setCount(await invoke("count_tokens", {
                 model,
                 messages: [
+                    { content: customInstructions, role: "system" },
                     ...useStore.getState().visibleMessages.flatMap((v) => v.role === "root" ? [] : [{ content: v.content, role: v.role }]),
                     { content: props.textareaRef.current?.value ?? "", role: "user" },
                 ],
@@ -942,7 +940,7 @@ const TokenCounter = (props: { textareaRef: Ref<HTMLTextAreaElement> }) => {
         }
         loop()
         return () => { stop = true }
-    }, [props.textareaRef, model])
+    }, [props.textareaRef, model, customInstructions])
     return <span class="inline-block bg-zinc-300 py-1 px-3 ml-4 mb-2 text-zinc-600 rounded cursor-pointer" onClick={() => { open("https://tiktokenizer.vercel.app") }}>{count}</span>
 }
 
@@ -960,30 +958,37 @@ type AzureVoiceInfo = {
     WordsPerMinute: string  // '147'
 }
 
-const SpeechToTextDialog = () => {
+const SettingsSpeechToText = () => {
     const whisperLanguage = useConfigStore((s) => s.whisperLanguage)
     const editVoiceInputBeforeSending = useConfigStore((s) => !!s.editVoiceInputBeforeSending)
-    return <Dialog id="speech-to-text" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
-        <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Speech to text</h2>
-            <h3 class="font-semibold my-2">Keybinding</h3>
-            <ul>
-                <li>Start <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
-                <li>Stop <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
-                <li>Cancel <code class="ml-2">Ctrl (or Cmd) + Shift + S</code></li>
-            </ul>
-            <h3 class="font-semibold my-2">Language</h3>
-            <input value={whisperLanguage} onChange={(ev) => { useConfigStore.setState({ whisperLanguage: ev.currentTarget.value }) }} class="mb-1 shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100" placeholder="en"></input>
-            <p>
-                Specify <a class="cursor-pointer text-blue-300 border-b border-b-blue-300 whitespace-nowrap" onClick={() => { open("https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes") }}>ISO-639-1 language code</a> for improved performance.
-            </p>
-            <h3 class="font-semibold my-2">Edit text before sending</h3>
-            <select class="text-zinc-600 px-2" value={editVoiceInputBeforeSending ? "enabled" : "disabled"} onChange={(ev) => { useConfigStore.setState({ editVoiceInputBeforeSending: ev.currentTarget.value === "enabled" ? 1 : 0 }) }}>
-                <option value="enabled">yes</option>
-                <option value="disabled">no</option>
-            </select>
-        </div>
-    </Dialog>
+    return <>
+        <h2>Keybindings</h2>
+        <ul>
+            <li>Start <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
+            <li>Stop <code class="ml-2">Ctrl (or Cmd) + Shift + V</code></li>
+            <li>Cancel <code class="ml-2">Ctrl (or Cmd) + Shift + S</code></li>
+        </ul>
+        <h2>Language</h2>
+        <input type="text" value={whisperLanguage} onChange={(ev) => { useConfigStore.setState({ whisperLanguage: ev.currentTarget.value }) }} placeholder="en"></input>
+        <p>
+            Specify an <a class="cursor-pointer text-blue-500 border-b border-b-blue-500 whitespace-nowrap" onClick={() => { open("https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes") }}>ISO-639-1 language code</a> for improved performance.
+        </p>
+        <h2>Edit text before sending</h2>
+        <select value={editVoiceInputBeforeSending ? "enabled" : "disabled"} onChange={(ev) => { useConfigStore.setState({ editVoiceInputBeforeSending: ev.currentTarget.value === "enabled" ? 1 : 0 }) }}>
+            <option value="enabled">yes</option>
+            <option value="disabled">no</option>
+        </select>
+    </>
+}
+
+const SettingsCustomInstructions = () => {
+    const customInstructions = useConfigStore((s) => s.customInstructions)
+    return <>
+        <textarea
+            value={customInstructions}
+            onChange={(ev) => { useConfigStore.setState({ customInstructions: ev.currentTarget.value }) }}
+            placeholder="Assistant is a large language model trained by OpenAI."></textarea>
+    </>
 }
 
 const TextToSpeechDialog = () => {
@@ -1012,143 +1017,140 @@ const TextToSpeechDialog = () => {
         }
     }, [ttsBackend])
 
-    return <Dialog id="text-to-speech" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg" onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
-        <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Output Device</h2>
-            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
-            <button class="mb-6 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400 ml-2" onClick={() => { useStore.getState().ttsQueue.speakText(null, null) }}>Test text-to-speech</button>
-            <h2 class="text-xl border-b mb-3 text-emerald-400 border-b-emerald-400">Text-to-speech</h2>
-            <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as any }) }}>
-                <option value="off">Disabled</option>
-                <option value="pico2wave">pico2wave</option>
-                <option value="web-speech-api" disabled={!window.speechSynthesis}>Web Speech API {window.speechSynthesis ? "" : "(undetected)"}</option>
-                <option value="azure">Microsoft Azure Text-to-speech API</option>
-            </select>
-            {ttsBackend === "pico2wave" && <div>
-                <table class="border-separate border-spacing-2">
-                    <tbody>
-                        <tr>
-                            <td>Installation (Debian/Ubuntu)</td>
-                            <td><code class="select-text">sudo apt install -y libttspico-utils</code></td>
-                        </tr>
-                        <tr>
-                            <td>Voice</td>
-                            <td><select value={pico2waveVoice} onChange={(ev) => { useConfigStore.setState({ pico2waveVoice: ev.currentTarget.value as any }) }} class="text-zinc-600 px-2">
-                                <option value="en-US">en-US</option>
-                                <option value="en-GB">en-GB</option>
-                                <option value="de-DE">de-DE</option>
-                                <option value="es-ES">es-ES</option>
-                                <option value="fr-FR">fr-FR</option>
-                                <option value="it-IT">it-IT</option>
-                            </select></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>}
-            {ttsBackend === "azure" && <>
-                <table class="border-separate border-spacing-2">
-                    <tbody>
-                        <tr>
-                            <td>Region</td>
-                            <td><input
-                                value={azureTTSRegion}
-                                onInput={(ev) => { useConfigStore.setState({ azureTTSRegion: ev.currentTarget.value }) }}
-                                autocomplete="off"
-                                class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100" placeholder="eastus"></input></td>
-                        </tr>
-                        <tr>
-                            <td>Resource key</td>
-                            <td>
-                                <input
-                                    value={azureTTSResourceKey}
-                                    onInput={(ev) => { useConfigStore.setState({ azureTTSResourceKey: ev.currentTarget.value }) }}
-                                    type={isPasswordVisible ? "" : "password"}
-                                    autocomplete="off"
-                                    class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
-                                    placeholder="12345abcd567890ef"></input>
-                                <button class="ml-2 px-2 bg-zinc-500 hover:bg-zinc-600"
-                                    onClick={() => { setIsPasswordVisible((s) => !s) }}>View</button>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>Voice</td>
-                            <td class="whitespace-nowrap">
-                                {voiceList.length === 0 && <span class="bg-zinc-200 px-4 text-zinc-600 inline-block rounded">{azureTTSVoice}</span>}
-                                {voiceList.length > 0 && <select value={azureTTSVoice} class="text-zinc-600 pl-2 rounded" onChange={(ev) => {
-                                    useConfigStore.setState({
-                                        azureTTSVoice: ev.currentTarget.value,
-                                        azureTTSLang: voiceList.find((v) => v.ShortName === ev.currentTarget.value)!.Locale,
-                                    })
-                                }}>{voiceList.map((value) => <option value={value.ShortName}>{value.ShortName}, {value.LocalName}, {value.LocaleName}</option>)}</select>}
-                                <button
-                                    class="ml-2 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400"
-                                    onClick={() => { getVoiceList() }}>Edit</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </>}
-            {ttsBackend === "web-speech-api" && <>
-                <table class="border-separate border-spacing-2">
-                    <tbody>
-                        <tr>
-                            <td>Language</td>
-                            <td><input
-                                value={webSpeechAPILang}
-                                onInput={(ev) => {
-                                    useConfigStore.setState({ webSpeechAPILang: ev.currentTarget.value })
-                                }}
+    return <>
+        <h2>Output Device</h2>
+        <button class="mb-6 inline rounded border text-sm px-3 py- border-neutral-400 disabled:bg-zinc-400" onClick={() => { invoke("sound_test") }}>Test speaker</button>
+        <button class="mb-6 inline rounded border text-sm px-3 py- border-neutral-400 disabled:bg-zinc-400 ml-2" onClick={() => { useStore.getState().ttsQueue.speakText(null, null) }}>Test text-to-speech</button>
+        <h2>Text-to-speech</h2>
+        <span class="mr-2">Backend</span><select value={ttsBackend} class="px-2 text-zinc-600" onChange={(ev) => { useConfigStore.setState({ ttsBackend: ev.currentTarget.value as any }) }}>
+            <option value="off">Disabled</option>
+            <option value="pico2wave">pico2wave</option>
+            <option value="web-speech-api" disabled={!window.speechSynthesis}>Web Speech API {window.speechSynthesis ? "" : "(undetected)"}</option>
+            <option value="azure">Microsoft Azure Text-to-speech API</option>
+        </select>
+        {ttsBackend === "pico2wave" && <div>
+            <table class="border-separate border-spacing-2">
+                <tbody>
+                    <tr>
+                        <td>Installation (Debian/Ubuntu)</td>
+                        <td><code class="select-text">sudo apt install -y libttspico-utils</code></td>
+                    </tr>
+                    <tr>
+                        <td>Voice</td>
+                        <td><select value={pico2waveVoice} onChange={(ev) => { useConfigStore.setState({ pico2waveVoice: ev.currentTarget.value as any }) }} class="text-zinc-600 px-2">
+                            <option value="en-US">en-US</option>
+                            <option value="en-GB">en-GB</option>
+                            <option value="de-DE">de-DE</option>
+                            <option value="es-ES">es-ES</option>
+                            <option value="fr-FR">fr-FR</option>
+                            <option value="it-IT">it-IT</option>
+                        </select></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>}
+        {ttsBackend === "azure" && <>
+            <table class="border-separate border-spacing-2">
+                <tbody>
+                    <tr>
+                        <td>Region</td>
+                        <td><input
+                            value={azureTTSRegion}
+                            onInput={(ev) => { useConfigStore.setState({ azureTTSRegion: ev.currentTarget.value }) }}
+                            autocomplete="off"
+                            class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100" placeholder="eastus"></input></td>
+                    </tr>
+                    <tr>
+                        <td>Resource key</td>
+                        <td>
+                            <input
+                                value={azureTTSResourceKey}
+                                onInput={(ev) => { useConfigStore.setState({ azureTTSResourceKey: ev.currentTarget.value }) }}
+                                type={isPasswordVisible ? "" : "password"}
                                 autocomplete="off"
                                 class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
-                                placeholder="en-US"></input></td>
-                        </tr>
-                        <tr>
-                            <td>Pitch</td>
-                            <td><input
-                                value={("" + webSpeechAPIPitch).includes(".") ? webSpeechAPIPitch : webSpeechAPIPitch.toFixed(1)}
-                                onInput={(ev) => {
-                                    if (!Number.isFinite(+ev.currentTarget.value!)) { return }
-                                    useConfigStore.setState({ webSpeechAPIPitch: +ev.currentTarget.value })
-                                }}
-                                autocomplete="off"
-                                class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
-                                placeholder="1.0"></input></td>
-                        </tr>
-                        <tr>
-                            <td>Rate</td>
-                            <td><input
-                                value={("" + webSpeechAPIRate).includes(".") ? webSpeechAPIRate : webSpeechAPIRate.toFixed(1)}
-                                onInput={(ev) => {
-                                    if (!Number.isFinite(+ev.currentTarget.value!)) { return }
-                                    useConfigStore.setState({ webSpeechAPIRate: +ev.currentTarget.value })
-                                }}
-                                autocomplete="off"
-                                class="shadow-light text-zinc-600 dark:shadow-none rounded font-mono px-4 dark:bg-zinc-600 dark:text-zinc-100"
-                                placeholder="1.0"></input></td>
-                        </tr>
-                        <tr>
-                            <td>Voice</td>
-                            <td><select
-                                class="px-2 text-zinc-600"
-                                value={webSpeechAPIVoice}
-                                onChange={(ev) => {
-                                    useConfigStore.setState({ webSpeechAPIVoice: ev.currentTarget.value })
-                                }}
-                                autocomplete="off">
-                                <option value="default">default</option>
-                                {webSpeechAPIVoices.map((v) => <option value={v.name}>{v.name}</option>)}
-                            </select></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </>}
-            <h2 class="text-xl border-b mt-6 mb-3 text-emerald-400 border-b-emerald-400">Audio Feedback</h2>
-            <select class="px-2 text-zinc-600" value={audioFeedback ? "on" : "off"} onChange={(ev) => { useConfigStore.setState({ audioFeedback: ev.currentTarget.value === "on" ? 1 : 0 }) }}>
-                <option value="on">enabled</option>
-                <option value="off">disabled</option>
-            </select>
-        </div>
-    </Dialog>
+                                placeholder="12345abcd567890ef"></input>
+                            <button class="ml-2 px-2 bg-zinc-500 hover:bg-zinc-600"
+                                onClick={() => { setIsPasswordVisible((s) => !s) }}>View</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Voice</td>
+                        <td class="whitespace-nowrap">
+                            {voiceList.length === 0 && <span class="bg-zinc-200 px-4 text-zinc-600 inline-block rounded">{azureTTSVoice}</span>}
+                            {voiceList.length > 0 && <select value={azureTTSVoice} class="text-zinc-600 pl-2 rounded" onChange={(ev) => {
+                                useConfigStore.setState({
+                                    azureTTSVoice: ev.currentTarget.value,
+                                    azureTTSLang: voiceList.find((v) => v.ShortName === ev.currentTarget.value)!.Locale,
+                                })
+                            }}>{voiceList.map((value) => <option value={value.ShortName}>{value.ShortName}, {value.LocalName}, {value.LocaleName}</option>)}</select>}
+                            <button
+                                class="ml-2 inline rounded border border-green-700 dark:border-green-700 text-sm px-3 py-1 text-white bg-green-600 hover:bg-green-500 disabled:bg-zinc-400"
+                                onClick={() => { getVoiceList() }}>Edit</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </>}
+        {ttsBackend === "web-speech-api" && <>
+            <table class="border-separate border-spacing-2">
+                <tbody>
+                    <tr>
+                        <td>Language</td>
+                        <td><input
+                            type="text"
+                            value={webSpeechAPILang}
+                            onInput={(ev) => {
+                                useConfigStore.setState({ webSpeechAPILang: ev.currentTarget.value })
+                            }}
+                            autocomplete="off"
+                            placeholder="en-US"></input></td>
+                    </tr>
+                    <tr>
+                        <td>Pitch</td>
+                        <td><input
+                            type="text"
+                            value={("" + webSpeechAPIPitch).includes(".") ? webSpeechAPIPitch : webSpeechAPIPitch.toFixed(1)}
+                            onInput={(ev) => {
+                                if (!Number.isFinite(+ev.currentTarget.value!)) { return }
+                                useConfigStore.setState({ webSpeechAPIPitch: +ev.currentTarget.value })
+                            }}
+                            autocomplete="off"
+                            placeholder="1.0"></input></td>
+                    </tr>
+                    <tr>
+                        <td>Rate</td>
+                        <td><input
+                            type="text"
+                            value={("" + webSpeechAPIRate).includes(".") ? webSpeechAPIRate : webSpeechAPIRate.toFixed(1)}
+                            onInput={(ev) => {
+                                if (!Number.isFinite(+ev.currentTarget.value!)) { return }
+                                useConfigStore.setState({ webSpeechAPIRate: +ev.currentTarget.value })
+                            }}
+                            autocomplete="off"
+                            placeholder="1.0"></input></td>
+                    </tr>
+                    <tr>
+                        <td>Voice</td>
+                        <td><select
+                            value={webSpeechAPIVoice}
+                            onChange={(ev) => {
+                                useConfigStore.setState({ webSpeechAPIVoice: ev.currentTarget.value })
+                            }}
+                            autocomplete="off">
+                            <option value="default">default</option>
+                            {webSpeechAPIVoices.map((v) => <option value={v.name}>{v.name}</option>)}
+                        </select></td>
+                    </tr>
+                </tbody>
+            </table>
+        </>}
+        <h2>Audio Feedback</h2>
+        <select value={audioFeedback ? "on" : "off"} onChange={(ev) => { useConfigStore.setState({ audioFeedback: ev.currentTarget.value === "on" ? 1 : 0 }) }}>
+            <option value="on">enabled</option>
+            <option value="off">disabled</option>
+        </select>
+    </>
 }
 
 const Dialog = (props: JSXInternal.DOMAttributes<HTMLDialogElement> & { id?: string, class?: string }) => {
@@ -1161,7 +1163,7 @@ const Dialog = (props: JSXInternal.DOMAttributes<HTMLDialogElement> & { id?: str
     return <dialog ref={ref} {...props}></dialog>
 }
 
-const BudgetDialog = () => {
+const SettingsBudget = () => {
     const [totalTokens, setTotalTokens] = useState<{ model: string, prompt_tokens_sum: number, completion_tokens_sum: number, count: number }[]>([])
     const [totalTTSCharacters, setTotalTTSCharacters] = useState<number>(-1)
     const [totalSpeechToTextMinutes, setTotalSpeechToTextMinutes] = useState<number>(-1)
@@ -1170,81 +1172,76 @@ const BudgetDialog = () => {
     const [month, setMonth] = useState("")
     const maxTokens = useConfigStore((s) => Math.floor(maxCostPerMessage / (getPricePerToken(s.model)?.prompt ?? 0)))
     const model = useConfigStore((s) => s.model)
+    const visible = useStore((s) => s.settingsTab === "budget")
 
     useEffect(() => {
-        useStore.setState({
-            openUsageDialog: async () => {
-                const now = new Date()
-                setMonth(Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(now))
-                setTotalTokens(await getTokenUsage(now))
-                setTotalTTSCharacters((await db.current.select<{ count: number }[]>(`\
+        (async () => {
+            const now = new Date()
+            setMonth(Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(now))
+            setTotalTokens(await getTokenUsage(now))
+            setTotalTTSCharacters((await db.current.select<{ count: number }[]>(`\
 SELECT
     coalesce(sum(numCharacters), 0) as count
 FROM textToSpeechUsage
 WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, [now.toISOString()]))[0]?.count ?? 0)
-                setTotalSpeechToTextMinutes(((await db.current.select<{ sumMs: number }[]>(`\
+            setTotalSpeechToTextMinutes(((await db.current.select<{ sumMs: number }[]>(`\
 SELECT
     coalesce(sum(durationMs), 0) as sumMs
 FROM speechToTextUsage
 WHERE date(timestamp, 'start of month') = date(?, 'start of month')`, []))[0]?.sumMs ?? 0) / 1000 / 60)
-                document.querySelector<HTMLDialogElement>("#budget")?.showModal()
-            }
-        })
-    }, [])
+        })()
+    }, [visible])
 
-    return <Dialog id="budget" class="p-0 bg-zinc-700 text-zinc-100 shadow-dark rounded-lg"
-        onClick={(ev) => { ev.target === ev.currentTarget && ev.currentTarget.close() }}>
-        <div class="px-20 py-8 w-fit">
-            <h2 class="text-xl border-b mb-4 text-emerald-400 border-b-emerald-400">Budget</h2>
-            <table class="border-separate border-spacing-2 w-full">
-                <tr><td>
-                    Max cost per month<br />
-                    <span class="text-xs">Alerts and temporary disables the application when usage exceeds this amount.</span>
-                </td><td>$ <input class="bg-zinc-600 pl-2 rounded" value={("" + budget).includes(".") ? budget : budget.toFixed(1)} onInput={(ev) => {
-                    if (!Number.isFinite(+ev.currentTarget.value!)) { return }
-                    useConfigStore.setState({ budget: +ev.currentTarget.value! })
-                }}></input></td></tr>
-                <tr><td>
-                    Max cost per message<br />
-                    <span class="text-xs">Excludes past messages from the request to keep the cost below this value.</span>
-                </td><td>
-                        $ <input class="bg-zinc-600 pl-2 rounded" value={("" + maxCostPerMessage).includes(".") ? maxCostPerMessage : maxCostPerMessage.toFixed(1)} onInput={(ev) => {
-                            if (!Number.isFinite(+ev.currentTarget.value!)) { return }
-                            useConfigStore.setState({ maxCostPerMessage: +ev.currentTarget.value })
-                        }}></input> =
-                        {maxTokens} {model} tokens
-                    </td></tr>
-            </table>
-            <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">ChatGPT Usage ({month})</h2>
-            <table class="mx-auto">
-                <thead class="[&_th]:px-4">
-                    <tr class="border-b border-b-zinc-300"><th>Model</th><th>Prompt Tokens</th><th>Generated Tokens</th><th>Price [USD]</th><th>Requests</th></tr>
-                </thead>
-                <tbody class="[&_td]:px-4">
-                    {totalTokens.map((v) => <tr class="select-text"><td class="text-left">{v.model}</td><td class="text-right">{v.prompt_tokens_sum}</td><td class="text-right">{v.completion_tokens_sum}</td><td class="text-right">{(getPricePerToken(v.model) ? (v.prompt_tokens_sum * getPricePerToken(v.model)!.prompt + v.completion_tokens_sum * getPricePerToken(v.model)!.generated).toFixed(6) : "?")}</td><td class="text-right">{v.count}</td></tr>)}
-                </tbody>
-            </table>
-            <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">Text-to-speech Usage ({month})</h2>
-            <table class="mx-auto">
-                <thead class="[&_th]:px-4">
-                    <tr class="border-b border-b-zinc-300"><th>Backend</th><th>Characters</th><th>F0 Free Tier (per month)</th><th>S0 Standard Tier [USD]</th></tr>
-                </thead>
-                <tbody class="[&_td]:px-4">
-                    <tr class="select-text"><td>Azure</td><td class="text-left">{totalTTSCharacters}</td><td class="text-right">{totalTTSCharacters} / 500000 ({(totalTTSCharacters / 500000 * 100).toFixed(1)}%)</td><td class="text-right">{(totalTTSCharacters / 1000000 * 16).toFixed(6)}</td></tr>
-                </tbody>
-            </table>
-            <h2 class="text-xl border-b mb-4 mt-8 text-emerald-400 border-b-emerald-400">Speech-to-text Usage ({month})</h2>
-            <table class="mx-auto">
-                <thead class="[&_th]:px-4">
-                    <tr class="border-b border-b-zinc-300"><th>Model</th><th>Usage [min]</th><th>Price [USD]</th></tr>
-                </thead>
-                <tbody class="[&_td]:px-4">
-                    <tr class="select-text"><td>whisper-1</td><td>{totalSpeechToTextMinutes.toFixed(1)}</td><td>{(totalSpeechToTextMinutes * 0.006).toFixed(3)}</td></tr>
-                </tbody>
-            </table>
-            <div class="mt-8 italic text-zinc-300">The pricing information provided by this software is an estimate, and the hard-coded prices can be out of date.</div>
-        </div>
-    </Dialog>
+    return <>
+        <h2>Budget</h2>
+        <table class="border-separate border-spacing-2 w-full">
+            <tr><td>
+                Max cost per month<br />
+                <span class="text-xs">Alerts and temporary disables the application when usage exceeds this amount.</span>
+            </td><td>$ <input type="text" value={("" + budget).includes(".") ? budget : budget.toFixed(1)} onInput={(ev) => {
+                if (!Number.isFinite(+ev.currentTarget.value!)) { return }
+                useConfigStore.setState({ budget: +ev.currentTarget.value! })
+            }}></input></td></tr>
+            <tr><td>
+                Max cost per message<br />
+                <span class="text-xs">Excludes past messages from the request to keep the cost below this value.</span>
+            </td><td>
+                    $ <input type="text" value={("" + maxCostPerMessage).includes(".") ? maxCostPerMessage : maxCostPerMessage.toFixed(1)} onInput={(ev) => {
+                        if (!Number.isFinite(+ev.currentTarget.value!)) { return }
+                        useConfigStore.setState({ maxCostPerMessage: +ev.currentTarget.value })
+                    }}></input> =
+                    {maxTokens} {model} tokens
+                </td></tr>
+        </table>
+        <h2>ChatGPT Usage ({month})</h2>
+        <table class="mx-auto">
+            <thead class="[&_th]:px-4">
+                <tr class="border-b border-b-zinc-300"><th>Model</th><th>Prompt Tokens</th><th>Generated Tokens</th><th>Price [USD]</th><th>Requests</th></tr>
+            </thead>
+            <tbody class="[&_td]:px-4">
+                {totalTokens.map((v) => <tr class="select-text"><td class="text-left">{v.model}</td><td class="text-right">{v.prompt_tokens_sum}</td><td class="text-right">{v.completion_tokens_sum}</td><td class="text-right">{(getPricePerToken(v.model) ? (v.prompt_tokens_sum * getPricePerToken(v.model)!.prompt + v.completion_tokens_sum * getPricePerToken(v.model)!.generated).toFixed(6) : "?")}</td><td class="text-right">{v.count}</td></tr>)}
+            </tbody>
+        </table>
+        <h2>Text-to-speech Usage ({month})</h2>
+        <table class="mx-auto">
+            <thead class="[&_th]:px-4">
+                <tr class="border-b border-b-zinc-300"><th>Backend</th><th>Characters</th><th>F0 Free Tier (per month)</th><th>S0 Standard Tier [USD]</th></tr>
+            </thead>
+            <tbody class="[&_td]:px-4">
+                <tr class="select-text"><td>Azure</td><td class="text-left">{totalTTSCharacters}</td><td class="text-right">{totalTTSCharacters} / 500000 ({(totalTTSCharacters / 500000 * 100).toFixed(1)}%)</td><td class="text-right">{(totalTTSCharacters / 1000000 * 16).toFixed(6)}</td></tr>
+            </tbody>
+        </table>
+        <h2>Speech-to-text Usage ({month})</h2>
+        <table class="mx-auto">
+            <thead class="[&_th]:px-4">
+                <tr class="border-b border-b-zinc-300"><th>Model</th><th>Usage [min]</th><th>Price [USD]</th></tr>
+            </thead>
+            <tbody class="[&_td]:px-4">
+                <tr class="select-text"><td>whisper-1</td><td>{totalSpeechToTextMinutes.toFixed(1)}</td><td>{(totalSpeechToTextMinutes * 0.006).toFixed(3)}</td></tr>
+            </tbody>
+        </table>
+        <div class="mt-8 italic text-zinc-300">The pricing information provided by this software is an estimate, and the hard-coded prices can be out of date.</div>
+    </>
 }
 
 /** Regenerates an assistant's message. */
